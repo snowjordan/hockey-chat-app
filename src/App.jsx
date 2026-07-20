@@ -27,6 +27,8 @@ import {
 import Directory from './components/Directory';
 import TeamsDirectory from './components/TeamsDirectory';
 import ProfileEditor from './components/ProfileEditor';
+import Login from './components/Login'
+import SubsTab from './components/SubsTab'
 
 const league = demoLeague;
 
@@ -35,6 +37,7 @@ const NAV_ITEMS = [
     { id: "schedule", label: "Schedule" },
     { id: "teams", label: "Teams" },
     { id: "directory", label: "Directory"},
+    { id: "subs", label: "Subs"},
     { id: "notices", label: "League Notices" },
     { id: "chat", label: "Chat" },
 ];
@@ -200,6 +203,8 @@ function GameDetailModal({ game, onClose, onMessageTeam, onRequestSub }) {
     );
 }
 function App() {
+    const [session, setSession] = useState(null);
+    const [authLoading, setAuthLoading] = useState(true);
     const [activeView, setActiveView] = useState("dashboard");
     const [selectedTeam, setSelectedTeam] = useState(null);
     const [selectedPlayer, setSelectedPlayer] = useState(null);
@@ -220,6 +225,85 @@ function App() {
     const [nextGameIndex, setNextGameIndex] = useState(0);
 
     const [teams, setTeams] = useState([]);
+
+    useEffect(() => {
+        supabase.auth.getSession().then(({ data }) => {
+            setSession(data.session);
+            setAuthLoading(false);
+        });
+
+        const {
+            data: { subscription },
+        } = supabase.auth.onAuthStateChange((_event, session) => {
+            setSession(session);
+            setAuthLoading(false);
+
+            if (session) {
+                setActiveView("dashboard");
+            }
+        });
+
+        return () => subscription.unsubscribe();
+    }, []);
+
+    useEffect(() => {
+        async function initializeUserProfile() {
+            const { data: { user }, error: userError } = await supabase.auth.getUser()
+
+            if (userError) {
+                console.error('Error loading authenticated user:', userError)
+                return
+            }
+
+            if (!user?.id || !user?.email) {
+                return
+            }
+
+            const { data: existingProfile, error: existingProfileError } = await supabase
+                .from('profiles')
+                .select('id')
+                .eq('auth_user_id', user.id)
+                .maybeSingle()
+
+            if (existingProfileError) {
+                console.error(
+                    'Error checking linked profile:',
+                    existingProfileError
+                )
+                return
+            }
+
+            if (existingProfile) {
+                return
+            }
+
+            const { data: linkedProfile, error: linkError } = await supabase
+                .from('profiles')
+                .update({
+                    auth_user_id: user.id,
+                })
+                .eq('email', user.email.toLowerCase())
+                .is('auth_user_id', null)
+                .select('id')
+                .maybeSingle()
+
+            if (linkError) {
+                console.error(
+                'Error linking authenticated user to profile:',
+                linkError
+                )
+                return
+            }
+
+            if (!linkedProfile) {
+                console.warn(
+                    'No unlinked player profile matched this login email.'
+                )
+            }
+        }
+
+        initializeUserProfile()
+    }, [])
 
     useEffect(() => {
         async function loadTeams() {
@@ -271,7 +355,14 @@ function App() {
 
     const upcomingGame = upcomingGames[nextGameIndex];
     console.log('upcomingGames length', upcomingGames.length);
-    const myTeam = teams.find((t) => t.name === "Red Bricks") ?? teams[0];
+    const rawMyTeam = teams.find((t) => t.name === "Red Bricks") ?? teams[0];
+
+    const myTeam = rawMyTeam
+      ? {
+            ...rawMyTeam,
+            roster: rawMyTeam.team_members ?? [],
+        }
+      : null;
 
     const gameContext = buildNextGameContext({
         game: upcomingGame,
@@ -318,6 +409,14 @@ function App() {
     };
 
     const promptNoResponse = () => openChat(getChatPrefill("prompt", gameContext));
+
+    async function signOut() {
+        const { error } = await supabase.auth.signOut()
+
+        if (error) {
+            console.error("Sign out error:", error.message)
+        }
+    }
 
     const sendChatMessage = () => {
         const text = chatDraft.trim();
@@ -395,7 +494,7 @@ function App() {
                         expandedFeedId={expandedFeedId}
                         onToggleFeed={setExpandedFeedId}
                         teams={teams}
-                        games={league.games}
+                        games={upcomingGames}
                     />
                 );
             case "schedule":
@@ -416,6 +515,8 @@ function App() {
                 return <TeamsView league={league} onSelectTeam={openTeam} />;
             case "directory":
                 return <Directory/>;
+            case "subs":
+                return <SubsTab/>
             case "notices":
                 return (
                     <NoticesView
@@ -452,6 +553,14 @@ function App() {
                 return null;
         }
     })();
+
+    if (authLoading) {
+        return <p>Loading...</p>;
+    }
+
+    if (!session) {
+        return <Login />;
+    }
 
     return (
         <div className="app-layout">
@@ -506,6 +615,14 @@ function App() {
 
                     </div>
                 )}
+
+                <button
+                            type="button"
+                            className="sign-out-button"
+                            onClick={signOut}
+                        >
+                            Sign out
+                        </button>
             </header>
 
             <div className="app-body">
