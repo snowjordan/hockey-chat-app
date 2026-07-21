@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
+import { loadAuthenticatedProfile } from "./lib/authHelpers.js";
 import { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 import HockeyIcon from "./components/HockeyIcon.jsx";
 import {
@@ -25,10 +26,10 @@ import {
     getChatPrefill,
 } from "./utils/gameHelpers.js";
 import Directory from './components/Directory';
-import TeamsDirectory from './components/TeamsDirectory';
 import ProfileEditor from './components/ProfileEditor';
-import Login from './components/Login'
-import SubsTab from './components/SubsTab'
+import Login from './components/Login';
+import SubsTab from './components/SubsTab';
+import ProfileView from './components/ProfileView';
 
 const league = demoLeague;
 
@@ -143,16 +144,20 @@ function LeagueFeed({ items, limit, expandedId, onToggle, title = "League Feed" 
 }
 
 function TonightsRoster({ game, teams = [], userRsvp, onPromptPlayers }) {
-    const myTeam = teams.find((t) => t.id === CURRENT_TEAM_ID);
-    const players = myTeam?.roster ?? [];
-    
+    const myTeam =
+        teams.find((team) => team.id === CURRENT_TEAM_ID) ??
+        teams.find((team) => team.name === "Red Bricks") ??
+        teams[0]
+
+    const players = myTeam?.team_members ?? myTeam?.roster ?? []
+
     if (!game) {
         return (
             <aside className="right-rail">
-                <h3 className="rail-heading">Tonight's Roster</h3>
+                <h3 className="rail-heading">Tonight&apos;s Roster</h3>
                 <p className="rail-empty">No upcoming game.</p>
             </aside>
-        );
+        )
     }
 
     if (players.length === 0) {
@@ -161,12 +166,50 @@ function TonightsRoster({ game, teams = [], userRsvp, onPromptPlayers }) {
                 <h3 className="rail-heading">Tonight&apos;s Roster</h3>
                 <p className="rail-empty">No roster loaded yet.</p>
             </aside>
-        );
+        )
     }
 
-    const groups = groupRosterByRsvp(players, userRsvp, CURRENT_USER_ID);
-}
+    return (
+        <aside className="right-rail">
+            <h3 className="rail-heading">Tonight&apos;s Roster</h3>
 
+            <ul className="rail-roster-list">
+                {players.map((player) => {
+                    const playerName =
+                        player.profiles?.full_name ??
+                        player.name ??
+                        "Unknown player"
+
+                    const status = resolveRsvp(
+                        player,
+                        userRsvp,
+                        CURRENT_USER_ID
+                    )
+
+                    return (
+                        <li
+                            key={player.id ?? playerName}
+                            className="rail-roster-item"
+                        >
+                            <span>{playerName}</span>
+                            <span>{rsvpLabel(status)}</span>
+                        </li>
+                    )
+                })}
+            </ul>
+
+            {onPromptPlayers && (
+                <button
+                    type="button"
+                    className="action-btn action-btn--outline"
+                    onClick={onPromptPlayers}
+                >
+                    Prompt No Response
+                </button>
+            )}
+        </aside>
+    )
+}
 
 function GameDetailModal({ game, onClose, onMessageTeam, onRequestSub }) {
     const home = game.home_team_name ?? 'TBD';
@@ -205,8 +248,11 @@ function GameDetailModal({ game, onClose, onMessageTeam, onRequestSub }) {
 function App() {
     const [session, setSession] = useState(null);
     const [authLoading, setAuthLoading] = useState(true);
+    const [currentProfile, setCurrentProfile] = useState(null);
+    const [accessDenied, setAccessDenied] = useState(false);
     const [activeView, setActiveView] = useState("dashboard");
     const [selectedTeam, setSelectedTeam] = useState(null);
+    const [editingPlayer, setEditingPlayer] = useState(false);
     const [selectedPlayer, setSelectedPlayer] = useState(null);
     const [activeChatId, setActiveChatId] = useState(league.chats[0].id);
     const [userRsvp, setUserRsvp] = useState("going");
@@ -227,114 +273,155 @@ function App() {
     const [teams, setTeams] = useState([]);
 
     useEffect(() => {
-        supabase.auth.getSession().then(({ data }) => {
-            setSession(data.session);
-            setAuthLoading(false);
-        });
+        let isMounted = true
+        let authCheckNumber = 0
+
+        async function processSession(nextSession) {
+            const currentCheck = ++authCheckNumber
+
+            if (!isMounted) {
+                return
+            }
+
+            setSession(nextSession)
+            setCurrentProfile(null)
+            setAccessDenied(false)
+            setAuthLoading(true)
+
+            if (!nextSession?.user) {
+                setAuthLoading(false)
+                return
+            }
+
+            console.log("Checking authenticated user:", {
+                id: nextSession.user.id,
+                email: nextSession.user.email,
+            })
+
+            const { profile, error } = await loadAuthenticatedProfile(nextSession.user.id)
+            
+            
+            // Ignore this result if another authentication check started, while the database request was running.
+
+            if (!isMounted || currentCheck !== authCheckNumber) {
+                return
+            }
+
+            console.log("Authenticated profile result:", profile)
+
+            if (error) {
+                console.error(
+                    "Unable to check profile access",
+                    error
+                )
+
+                setCurrentProfile(null)
+                setAccessDenied(true)
+                setAuthLoading(false)
+                return
+            }
+
+            if (!profile) {
+                console.warn(
+                    "Access denied: no profile is linked to",
+                    nextSession.user.id
+                )
+
+                setCurrentProfile(null)
+                setAccessDenied(true)
+                setAuthLoading(false)
+                return
+            }
+
+            setCurrentProfile(profile)
+            setAccessDenied(false)
+            setActiveView('dashboard')
+            setAuthLoading(false)
+        }
+        
+        async function initializeAuth() {
+            const { data: {session: initialSession}, error } = await supabase.auth.getSession()
+
+            if (error) {
+                console.error(
+                    "Unable to restore authentication session:",
+                    error
+                )
+
+                if (isMounted) {
+                    setSession(null)
+                    setCurrentProfile(null)
+                    setAuthLoading(false)
+                }
+
+                return
+            }
+
+            await processSession(initialSession)
+        }
+
+        initializeAuth()
 
         const {
             data: { subscription },
-        } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session);
-            setAuthLoading(false);
-
-            if (session) {
-                setActiveView("dashboard");
+        } = supabase.auth.onAuthStateChange(
+            (_event, nextSession) => {
+                processSession(nextSession)
             }
-        });
+        )
 
-        return () => subscription.unsubscribe();
-    }, []);
-
-    useEffect(() => {
-        async function initializeUserProfile() {
-            const { data: { user }, error: userError } = await supabase.auth.getUser()
-
-            if (userError) {
-                console.error('Error loading authenticated user:', userError)
-                return
-            }
-
-            if (!user?.id || !user?.email) {
-                return
-            }
-
-            const { data: existingProfile, error: existingProfileError } = await supabase
-                .from('profiles')
-                .select('id')
-                .eq('auth_user_id', user.id)
-                .maybeSingle()
-
-            if (existingProfileError) {
-                console.error(
-                    'Error checking linked profile:',
-                    existingProfileError
-                )
-                return
-            }
-
-            if (existingProfile) {
-                return
-            }
-
-            const { data: linkedProfile, error: linkError } = await supabase
-                .from('profiles')
-                .update({
-                    auth_user_id: user.id,
-                })
-                .eq('email', user.email.toLowerCase())
-                .is('auth_user_id', null)
-                .select('id')
-                .maybeSingle()
-
-            if (linkError) {
-                console.error(
-                'Error linking authenticated user to profile:',
-                linkError
-                )
-                return
-            }
-
-            if (!linkedProfile) {
-                console.warn(
-                    'No unlinked player profile matched this login email.'
-                )
-            }
+        return () => {
+            isMounted = false
+            authCheckNumber += 1
+            subscription.unsubscribe()
         }
-
-        initializeUserProfile()
     }, [])
 
     useEffect(() => {
+        if (!currentProfile) {
+            setTeams([])
+            return
+        }
+
         async function loadTeams() {
             const { data, error } = await supabase
-                .from('teams')
+                .from("teams")
                 .select(`
                     id,
                     name,
+                    league_name,
                     team_members (
                         id,
+                        jersey_number,
                         position,
                         profiles (
                             id,
-                            full_name
+                            full_name,
+                            email,
+                            phone,
+                            notes,
+                            auth_user_id
                         )
                     )
                 `)
-                .order('name');
+                .order("name")
 
             if (error) {
-                console.error(error);
-                return;
+                console.error("Error loading teams:", error)
+                return
             }
 
-            setTeams(data ?? []);
+            setTeams(data ?? [])
         }
 
-        loadTeams();
-    }, []);
+        loadTeams()
+    }, [currentProfile])
 
     useEffect(() => {
+        if (!currentProfile) {
+            return
+        }
+
         async function loadUpcomingGames() {
 
             const { data, error } = await supabase
@@ -351,7 +438,7 @@ function App() {
         }
 
         loadUpcomingGames();
-    }, []);
+    }, [currentProfile]);
 
     const upcomingGame = upcomingGames[nextGameIndex];
     console.log('upcomingGames length', upcomingGames.length);
@@ -390,18 +477,26 @@ function App() {
     };
 
     const navigateTo = (view) => {
-        setActiveView(view);
+        setActiveView(view)
+        setEditingPlayer(false)
+
         if (view !== "teams") {
-            setSelectedTeam(null);
-            setSelectedPlayer(null);
+            setSelectedTeam(null)
+            setSelectedPlayer(null)
         }
-    };
+    }
 
     const openTeam = (team) => {
-        setSelectedTeam(team);
-        setSelectedPlayer(null);
-        setActiveView("teams");
-    };
+        setSelectedTeam(team)
+        setSelectedPlayer(null)
+        setEditingPlayer(false)
+        setActiveView("teams")
+    }
+
+    const openPlayer = (player) => {
+        setSelectedPlayer(player)
+        setEditingPlayer(false)
+    }
 
     const openChat = (prefill = "") => {
         setActiveView("chat");
@@ -440,26 +535,61 @@ function App() {
             if (!profile?.id) {
                 return (
                     <div className="page-view player-detail-view">
-                        <button type="button" className="back-button" onClick={() => setSelectedPlayer(null)}>
+                        <button
+                            type="button"
+                            className="back-button"
+                            onClick={() => {
+                                setSelectedPlayer(null)
+                                setEditingPlayer(false)
+                            }}
+                        >
                             ← Back to roster
                         </button>
+
                         <section className="content-card">
-                            <p className="empty-state">This roster member does not have a profile yet.</p>
+                            <p className="empty-state">
+                                This roster member does not have a profile yet.
+                            </p>
                         </section>
                     </div>
-                );
+                )
+            }
+
+            const isOwnProfile = currentProfile?.id === profile.id
+
+            const isAdmin = currentProfile?.is_admin === true
+
+            const canEditProfile = isOwnProfile || isAdmin
+
+            if (editingPlayer && canEditProfile) {
+                return (
+                    <ProfileEditor
+                        profile={profile}
+                        onBack={() => setEditingPlayer(false)}
+                        onSaved={() => {
+                            setEditingPlayer(false)
+                            setSelectedPlayer(null)
+                            setSelectedTeam(null)
+                        }}
+                    />
+                )
             }
 
             return (
-                <ProfileEditor
+                <ProfileView
                     profile={profile}
-                    onBack={() => setSelectedPlayer(null)}
-                    onSaved={() => {
+                    currentProfile={currentProfile}
+                    onBack={() => {
                         setSelectedPlayer(null)
-                        setSelectedTeam(null)
+                        setEditingPlayer(false)
                     }}
+                    onEdit={
+                        canEditProfile
+                            ? () => setEditingPlayer(true)
+                            : undefined
+                    }
                 />
-            );
+            )
         }
 
         if (selectedTeam && activeView === "teams") {
@@ -468,10 +598,14 @@ function App() {
                     team={selectedTeam}
                     league={league}
                     userRsvp={userRsvp}
-                    onBack={() => setSelectedTeam(null)}
-                    onSelectPlayer={setSelectedPlayer}
+                    onBack={() => {
+                        setSelectedTeam(null)
+                        setSelectedPlayer(null)
+                        setEditingPlayer(false)
+                    }}
+                    onSelectPlayer={openPlayer}
                 />
-            );
+            )
         }
 
         switch (activeView) {
@@ -484,10 +618,12 @@ function App() {
                         onRsvp={handleRsvp}
                         subRequested={subRequested}
                         onRequestSub={() => {
-                            setSubRequested(true);
-                            openChat(getChatPrefill("sub", gameContext));
+                            setSubRequested(true)
+                            openChat(getChatPrefill("sub", gameContext))
                         }}
-                        onMessageTeam={() => openChat(getChatPrefill("game", gameContext))}
+                        onMessageTeam={() =>
+                            openChat(getChatPrefill("game", gameContext))
+                        }
                         onPromptNoResponse={promptNoResponse}
                         onOpenTeam={openTeam}
                         feedItems={feedItems}
@@ -496,7 +632,8 @@ function App() {
                         teams={teams}
                         games={upcomingGames}
                     />
-                );
+                )
+
             case "schedule":
                 return (
                     <ScheduleView
@@ -504,19 +641,30 @@ function App() {
                         userRsvp={userRsvp}
                         onRsvp={handleRsvp}
                         gameContext={gameContext}
-                        onMessageTeam={() => openChat(getChatPrefill("game", gameContext))}
+                        onMessageTeam={() =>
+                            openChat(getChatPrefill("game", gameContext))
+                        }
                         onRequestSub={() => {
-                            setSubRequested(true);
-                            openChat(getChatPrefill("sub", gameContext));
+                            setSubRequested(true)
+                            openChat(getChatPrefill("sub", gameContext))
                         }}
                     />
-                );
+                )
+
             case "teams":
-                return <TeamsView league={league} onSelectTeam={openTeam} />;
+                return (
+                    <TeamsView
+                        teams={teams}
+                        onSelectTeam={openTeam}
+                    />
+                )
+
             case "directory":
-                return <Directory/>;
+                return <Directory />
+
             case "subs":
-                return <SubsTab/>
+                return <SubsTab />
+
             case "notices":
                 return (
                     <NoticesView
@@ -528,7 +676,8 @@ function App() {
                         onToggleFeed={setExpandedFeedId}
                         onViewGame={() => navigateTo("schedule")}
                     />
-                );
+                )
+
             case "chat":
                 return (
                     <ChatView
@@ -541,25 +690,44 @@ function App() {
                         onSend={sendChatMessage}
                         gameContext={gameContext}
                         onRequestSub={() => {
-                            setSubRequested(true);
-                            setChatDraft(getChatPrefill("sub", gameContext));
+                            setSubRequested(true)
+                            setChatDraft(
+                                getChatPrefill("sub", gameContext)
+                            )
                         }}
-                        onAskGoalie={() => setChatDraft(getChatPrefill("goalie", gameContext))}
-                        onMessageGame={() => setChatDraft(getChatPrefill("game", gameContext))}
-                        onPromptNoResponse={() => setChatDraft(getChatPrefill("prompt", gameContext))}
+                        onAskGoalie={() =>
+                            setChatDraft(
+                                getChatPrefill("goalie", gameContext)
+                            )
+                        }
+                        onMessageGame={() =>
+                            setChatDraft(
+                                getChatPrefill("game", gameContext)
+                            )
+                        }
+                        onPromptNoResponse={() =>
+                            setChatDraft(
+                                getChatPrefill("prompt", gameContext)
+                            )
+                        }
                     />
-                );
+                )
+
             default:
-                return null;
+                return null
         }
-    })();
+    })()
 
     if (authLoading) {
-        return <p>Loading...</p>;
+        return <p>Checking account...</p>;
     }
 
     if (!session) {
         return <Login />;
+    }
+
+    if (!currentProfile) {
+        return <Login accessDenied={accessDenied} />
     }
 
     return (
@@ -641,12 +809,14 @@ function App() {
 
                 <main className="main-content">{mainContent}</main>
 
-                <TonightsRoster
+                {!selectedPlayer && (
+                    <TonightsRoster
                     game={upcomingGame}
                     teams={teams}
                     userRsvp={userRsvp}
                     onPromptPlayers={promptNoResponse}
                 />
+                )}
             </div>
         </div>
     );
@@ -908,56 +1078,27 @@ function ScheduleView({ league, userRsvp, onRsvp, gameContext, onMessageTeam, on
     );
 }
 
-function TeamsView({ league, onSelectTeam }) {
-    const [teams, setTeams] = useState([]);
-
-    async function loadTeams() {
-            const { data, error } = await supabase
-                .from("teams")
-                .select(`
-                    id,
-                    name,
-                    league_name,
-                    team_members (
-                        id,
-                        jersey_number,
-                        position,
-                        profiles (
-                            id,
-                            full_name,
-                            email,
-                            phone,
-                            notes
-                        )
-                    )
-                `);
-
-            if (error) {
-                console.error(error);
-                return;
-            }
-
-            setTeams(data);
-        }
-
-    useEffect(() => {
-        loadTeams()
-    }, [])
- 
-
+function TeamsView({ teams = [], onSelectTeam }) {
     return (
         <div className="page-view teams-view">
             <header className="page-header">
                 <h2>Teams</h2>
-                <p className="page-subtitle">League teams and player rosters</p>
+                <p className="page-subtitle">
+                    League teams and player rosters
+                </p>
             </header>
+
             <div className="teams-grid teams-grid--page">
                 {teams.map((team) => (
-                    <TeamCard key={team.id} team={team} onSelect={onSelectTeam} />
+                    <TeamCard
+                        key={team.id}
+                        team={team}
+                        onSelect={onSelectTeam}
+                    />
                 ))}
             </div>
         </div>
-    );
+    )
 }
 
 function TeamDetail({ team, league, userRsvp, onBack, onSelectPlayer }) {
