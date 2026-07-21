@@ -46,9 +46,17 @@ export default function Login({ accessDenied = false }) {
     if (error) {
       console.error('Magic-link sign-in error:', error)
 
-      setEmailError(
-        'We could not send a sign-in link. Make sure this email has been connected to a league account.'
+      if (
+        error.message?.toLowerCase().includes('rate limit')
+      ) {
+        setEmailError(
+        'Too many sign-in links have been requested. Please wait and try again later.'
       )
+      } else {
+        setEmailError(
+            'We could not send a sign-in link. Make sure this email has been connected to a league account.'
+        )
+      }
 
       setSendingLink(false)
       return
