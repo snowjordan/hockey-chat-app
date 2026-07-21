@@ -3,11 +3,13 @@ import { supabase } from '../lib/supabaseClient'
 
 export default function Login({ accessDenied = false }) {
   const [email, setEmail] = useState('')
-  const [emailMessage, setEmailMessage] = useState('')
-  const [emailError, setEmailError] = useState('')
-  const [sendingLink, setSendingLink] = useState(false)
+  const [password, setPassword] = useState('')
+  const [loginError, setLoginError] = useState('')
+  const [signingIn, setSigningIn] = useState(false)
 
   async function signInWithGoogle() {
+    setLoginError('')
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -17,56 +19,41 @@ export default function Login({ accessDenied = false }) {
 
     if (error) {
       console.error('Google sign-in error:', error.message)
+      setLoginError('Google sign-in could not be started.')
     }
   }
 
-  async function sendMagicLink(event) {
+  async function signInWithEmail(event) {
     event.preventDefault()
 
     const trimmedEmail = email.trim()
 
-    setEmailMessage('')
-    setEmailError('')
+    setLoginError('')
 
-    if (!trimmedEmail) {
-      setEmailError('Enter your email address.')
+    if (!trimmedEmail || !password) {
+      setLoginError('Enter your email address and password.')
       return
     }
 
-    setSendingLink(true)
+    setSigningIn(true)
 
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await supabase.auth.signInWithPassword({
       email: trimmedEmail,
-      options: {
-        emailRedirectTo: window.location.origin,
-        shouldCreateUser: false,
-      },
+      password,
     })
 
     if (error) {
-      console.error('Magic-link sign-in error:', error)
+      console.error('Email sign-in error:', error)
 
-      if (
-        error.message?.toLowerCase().includes('rate limit')
-      ) {
-        setEmailError(
-        'Too many sign-in links have been requested. Please wait and try again later.'
+      setLoginError(
+        'The email address or password is incorrect.'
       )
-      } else {
-        setEmailError(
-            'We could not send a sign-in link. Make sure this email has been connected to a league account.'
-        )
-      }
 
-      setSendingLink(false)
+      setSigningIn(false)
       return
     }
 
-    setEmailMessage(
-      'Check your email for a sign-in link. The link can only be used once.'
-    )
-
-    setSendingLink(false)
+    setSigningIn(false)
   }
 
   async function signOut() {
@@ -105,8 +92,8 @@ export default function Login({ accessDenied = false }) {
             <h1>Sign in</h1>
 
             <p className="login-help">
-              Sign in with Google or request a one-time sign-in link
-              using the email connected to your league profile.
+              Sign in with Google or use the email address and password
+              connected to your league account.
             </p>
 
             <button
@@ -123,7 +110,7 @@ export default function Login({ accessDenied = false }) {
 
             <form
               className="email-login-form"
-              onSubmit={sendMagicLink}
+              onSubmit={signInWithEmail}
             >
               <label htmlFor="login-email">
                 Email address
@@ -134,37 +121,39 @@ export default function Login({ accessDenied = false }) {
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@example.com"
                 autoComplete="email"
-                disabled={sendingLink}
+                disabled={signingIn}
+                required
+              />
+
+              <label htmlFor="login-password">
+                Password
+              </label>
+
+              <input
+                id="login-password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+                disabled={signingIn}
                 required
               />
 
               <button
                 className="email-sign-in-button"
                 type="submit"
-                disabled={sendingLink}
+                disabled={signingIn}
               >
-                {sendingLink
-                  ? 'Sending link...'
-                  : 'Email me a sign-in link'}
+                {signingIn ? 'Signing in...' : 'Sign in'}
               </button>
 
-              {emailMessage && (
-                <p
-                  className="login-message login-message-success"
-                  role="status"
-                >
-                  {emailMessage}
-                </p>
-              )}
-
-              {emailError && (
+              {loginError && (
                 <p
                   className="login-message login-message-error"
                   role="alert"
                 >
-                  {emailError}
+                  {loginError}
                 </p>
               )}
             </form>
