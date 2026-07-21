@@ -10,12 +10,33 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Query Supabase
-        run: |
-          curl -s \
-            -H "apikey: $SUPABASE_ANON_KEY" \
-            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
-            "$SUPABASE_URL/rest/v1/teams?select=id&limit=1"
+      - name: Sign in and query Supabase
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          SUPABASE_EMAIL: ${{ secrets.SUPABASE_KEEPALIVE_EMAIL }}
+          SUPABASE_PASSWORD: ${{ secrets.SUPABASE_KEEPALIVE_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          AUTH_RESPONSE=$(curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "apikey: $SUPABASE_ANON_KEY" \
+            --header "Content-Type: application/json" \
+            --data "{\"email\":\"$SUPABASE_EMAIL\",\"password\":\"$SUPABASE_PASSWORD\"}" \
+            "$SUPABASE_URL/auth/v1/token?grant_type=password")
+
+          ACCESS_TOKEN=$(echo "$AUTH_RESPONSE" | jq -r '.access_token')
+
+          if [ -z "$ACCESS_TOKEN" ] || [ "$ACCESS_TOKEN" = "null" ]; then
+            echo "Supabase login did not return an access token."
+            exit 1
+          fi
+
+          curl --fail-with-body --silent --show-error \
+            --header "apikey: $SUPABASE_ANON_KEY" \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            "$SUPABASE_URL/rest/v1/teams?select=id&limit=1"
+
+          echo
+          echo "Supabase keepalive succeeded."
