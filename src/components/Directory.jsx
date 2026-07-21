@@ -24,6 +24,7 @@ export default function Directory() {
           )
         )
       `)
+      .eq('is_system_account', false)
       .order('full_name')
 
     if (error) {

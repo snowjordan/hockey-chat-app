@@ -394,7 +394,7 @@ function App() {
                         id,
                         jersey_number,
                         position,
-                        profiles (
+                        profiles!inner (
                             id,
                             full_name,
                             email,
@@ -404,6 +404,7 @@ function App() {
                         )
                     )
                 `)
+                .eq("team_members.profiles.is_system_account", false)
                 .order("name")
 
             if (error) {
