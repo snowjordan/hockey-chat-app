@@ -298,16 +298,16 @@ function App() {
                 email: nextSession.user.email,
             })
 
-            const { profile, error } = await loadAuthenticatedProfile(nextSession.user.id)
-            
-            
-            // Ignore this result if another authentication check started, while the database request was running.
+            let {
+                profile,
+                error,
+            } = await loadAuthenticatedProfile(nextSession.user.id)
 
+            // Ignore this result if another authentication check started
+            // while the database request was running.
             if (!isMounted || currentCheck !== authCheckNumber) {
                 return
             }
-
-            console.log("Authenticated profile result:", profile)
 
             if (error) {
                 console.error(
@@ -321,21 +321,94 @@ function App() {
                 return
             }
 
+            // A profile may exist for this email but not yet be linked
+            // to the newly authenticated Supabase user.
             if (!profile) {
-                console.warn(
-                    "Access denied: no profile is linked to",
-                    nextSession.user.id
+                console.log(
+                    "No linked profile found. Attempting automatic profile connection."
                 )
 
-                setCurrentProfile(null)
-                setAccessDenied(true)
-                setAuthLoading(false)
-                return
+                const {
+                    data: linkResult,
+                    error: linkError,
+                } = await supabase.rpc(
+                    "link_authenticated_profile"
+                )
+
+                // Ignore this result if another authentication check started
+                // while the profile-linking request was running.
+                if (!isMounted || currentCheck !== authCheckNumber) {
+                    return
+                }
+
+                if (linkError) {
+                    console.error(
+                        "Unable to connect authenticated user to profile",
+                        linkError
+                    )
+
+                    setCurrentProfile(null)
+                    setAccessDenied(true)
+                    setAuthLoading(false)
+                    return
+                }
+
+                console.log(
+                    "Profile connection result:",
+                    linkResult
+                )
+
+                const linkSucceeded =
+                    linkResult?.status === "linked" ||
+                    linkResult?.status === "already_linked"
+
+                if (!linkSucceeded) {
+                    console.warn(
+                        "Access denied: profile could not be connected",
+                        linkResult?.status
+                    )
+
+                    setCurrentProfile(null)
+                    setAccessDenied(true)
+                    setAuthLoading(false)
+                    return
+                }
+
+                const linkedProfileResult =
+                    await loadAuthenticatedProfile(
+                        nextSession.user.id
+                    )
+
+                // Ignore this result if another authentication check started
+                // while the linked profile was being loaded.
+                if (!isMounted || currentCheck !== authCheckNumber) {
+                    return
+                }
+
+                profile = linkedProfileResult.profile
+                error = linkedProfileResult.error
+
+                if (error || !profile) {
+                    console.error(
+                        "Profile was connected, but could not be loaded",
+                        error
+                    )
+
+                    setCurrentProfile(null)
+                    setAccessDenied(true)
+                    setAuthLoading(false)
+                    return
+                }
             }
+
+            console.log(
+                "Authenticated profile result:",
+                profile
+            )
 
             setCurrentProfile(profile)
             setAccessDenied(false)
-            setActiveView('dashboard')
+            setActiveView("dashboard")
             setAuthLoading(false)
         }
         
