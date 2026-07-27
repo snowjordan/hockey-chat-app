@@ -5,7 +5,9 @@ export default function Login({ accessDenied = false }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loginError, setLoginError] = useState('')
+  const [loginMessageType, setLoginMessageType] = useState('error')
   const [signingIn, setSigningIn] = useState(false)
+  
 
   async function signInWithGoogle() {
     setLoginError('')
@@ -20,6 +22,7 @@ export default function Login({ accessDenied = false }) {
     if (error) {
       console.error('Google sign-in error:', error.message)
       setLoginError('Google sign-in could not be started.')
+      setLoginMessageType('error')
     }
   }
 
@@ -48,10 +51,58 @@ export default function Login({ accessDenied = false }) {
       setLoginError(
         'The email address or password is incorrect.'
       )
+      setLoginMessageType('error')
 
       setSigningIn(false)
       return
     }
+
+    setSigningIn(false)
+  }
+
+  async function requestAccountEmail() {
+    const trimmedEmail = email.trim()
+
+    setLoginError('')
+
+    if (!trimmedEmail) {
+      setLoginError(
+        'Enter your email address first.'
+      ) 
+      return
+    }
+
+    setSigningIn(true)
+
+    const { error } =
+      await supabase.functions.invoke(
+        'rapid-worker',
+        {
+          body: {
+            email: trimmedEmail,
+            redirectTo:
+              `${window.location.origin}/set-password`,
+          },
+        }
+      )
+
+    if (error) {
+      console.error(
+        'Account email request failed:',
+        error
+      )
+
+      setLoginError(
+        'Unable to send the account email. Please try again.'
+      )
+
+      setSigningIn(false)
+      return
+    }
+
+    setLoginError(
+      'If this email belongs to a league member, an account email has been sent.'
+    )
 
     setSigningIn(false)
   }
@@ -147,6 +198,27 @@ export default function Login({ accessDenied = false }) {
               >
                 {signingIn ? 'Signing in...' : 'Sign in'}
               </button>
+
+              <div className="account-help-actions">
+                <button
+                  className="account-help-link"
+                  type="button"
+                  onClick={requestAccountEmail}
+                  disabled={signingIn}
+                >
+                  Forgot password?
+                </button>
+
+
+                <button
+                  className="account-help-link"
+                  type="button"
+                  onClick={requestAccountEmail}
+                  disabled={signingIn}
+                >
+                  Set up my account
+                </button>
+              </div>
 
               {loginError && (
                 <p

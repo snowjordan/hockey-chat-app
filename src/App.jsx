@@ -30,6 +30,7 @@ import ProfileEditor from './components/ProfileEditor';
 import Login from './components/Login';
 import SubsTab from './components/SubsTab';
 import ProfileView from './components/ProfileView';
+import SetPassword from './components/SetPassword'
 
 const league = demoLeague;
 
@@ -271,6 +272,8 @@ function App() {
     const [nextGameIndex, setNextGameIndex] = useState(0);
 
     const [teams, setTeams] = useState([]);
+
+    const isSetPasswordPage = window.location.pathname === '/set-password'
 
     useEffect(() => {
         let isMounted = true
@@ -791,6 +794,11 @@ function App() {
                 return null
         }
     })()
+
+    if (isSetPasswordPage) {
+        return <SetPassword />
+    }   
+
 
     if (authLoading) {
         return <p>Checking account...</p>;

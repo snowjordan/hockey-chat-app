@@ -625,6 +625,37 @@ body {
   color: #b42318;
 }
 
+/* Account help */
+
+.account-help-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 28px;
+  margin-top: 16px;
+  color: #60738a;
+}
+
+.account-help-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #0077cc;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.account-help-link:hover {
+  text-decoration: underline;
+}
+
+.account-help-link:disabled {
+  color: #8a98a8;
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
 /* ── Dashboard grid ── */
 
 .dashboard-grid {
