@@ -81,7 +81,7 @@ export default function Login({ accessDenied = false }) {
           body: {
             email: trimmedEmail,
             redirectTo:
-              `${window.location.origin}/set-password`,
+              `${window.location.origin}/?page=set-password`,
           },
         }
       )

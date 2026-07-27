@@ -273,7 +273,9 @@ function App() {
 
     const [teams, setTeams] = useState([]);
 
-    const isSetPasswordPage = window.location.pathname === '/set-password'
+    const searchParams = new URLSearchParams(window.location.search)
+
+    const isSetPasswordPage = window.Location.pathname === "/set-password" || searchParams.get("page") === "set-password"
 
     useEffect(() => {
         let isMounted = true
