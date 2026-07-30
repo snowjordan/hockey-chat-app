@@ -125,8 +125,14 @@ export default function Directory() {
 
                 <footer className="directory-contact">
                   <div className="directory-contact-row">
-                    <span>✉ {listing.email}</span>
-                    <span>📞 {listing.phone || 'No phone listed'}</span>
+                    <span className="directory-contact-email">
+                      <span aria-hidden="true">✉</span> 
+                      <span>{listing.email}</span>
+                    </span>
+                    <span className="directory-contact-phone">
+                      <span aria-hidden="true">📞</span>
+                      <span>{listing.phone || "No phone listed"}</span>
+                    </span>
                   </div>
 
                   {(business?.linkedin_url || business?.website_url) && (

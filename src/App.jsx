@@ -273,6 +273,8 @@ function App() {
 
     const [teams, setTeams] = useState([]);
 
+    const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+
     const searchParams = new URLSearchParams(window.location.search)
 
     const isSetPasswordPage = window.Location.pathname === "/set-password" || searchParams.get("page") === "set-password"
@@ -547,6 +549,7 @@ function App() {
     const navigateTo = (view) => {
         setActiveView(view)
         setEditingPlayer(false)
+        setIsMobileNavOpen(false)
 
         if (view !== "teams") {
             setSelectedTeam(null)
@@ -807,7 +810,22 @@ function App() {
         <div className="app-layout">
             <header className="app-bar">
                 <div className="app-bar-brand">
-                    <HockeyIcon size={22} className="app-bar-icon" />
+                    <button
+                        type="button"
+                        className="mobile-nav-button"
+                        aria-label="Open navigation"
+                        aria-expanded={isMobileNavOpen}
+                        aria-controls="league-navigation"
+                        onClick={() => setIsMobileNavOpen(true)}
+                    >
+                        <HockeyIcon size={22} />
+                    </button>
+
+                    <HockeyIcon 
+                        size={22} 
+                        className="app-bar-icon desktop-brand-icon" 
+                    />
+
                     <div>
                         <h1 className="app-bar-title">Hockey League</h1>
                         <span className="app-bar-subtitle">{league.name} · Season 2026</span>
@@ -867,7 +885,24 @@ function App() {
             </header>
 
             <div className="app-body">
-                <nav className="sidebar">
+                <nav
+                    id="league-navigation"
+                    className={`sidebar${isMobileNavOpen ? " is-open" : ""}`}
+                    aria-label="League navigation"
+                >
+                    <div className="mobile-drawer-header">
+                        <span>Menu</span>
+
+                        <button
+                            type="button"
+                            className="mobile-nav-close"
+                            aria-label="Close navigation"
+                            onClick={() => setIsMobileNavOpen(false)}
+                        >
+                            x
+                        </button>
+                    </div>
+
                     {NAV_ITEMS.map((item) => (
                         <button
                             key={item.id}
@@ -879,6 +914,15 @@ function App() {
                         </button>
                     ))}
                 </nav>
+
+                {isMobileNavOpen && (
+                    <button
+                        type="button"
+                        className="mobile-nav-backdrop"
+                        aria-label="Close navigation"
+                        onClick={() => setIsMobileNavOpen(false)}
+                    />
+                )}
 
                 <main className="main-content">{mainContent}</main>
 
