@@ -8,18 +8,11 @@ export async function loadAuthenticatedProfile(userId) {
         }
     }
 
-    console.log("Looking for profile with auth_user_id:", userId)
-
     const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('auth_user_id', userId)
         .maybeSingle()
-
-    console.log("Profile query returned:", {
-        data,
-        error,
-    })
 
     if (error) {
         console.error(

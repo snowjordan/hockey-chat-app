@@ -221,11 +221,6 @@ export default function SubsTab() {
             error
           )
         }
-
-        console.log(
-          'Sub preference subscription status:',
-          status
-        )
       })
 
     const profilesChannel = supabase
@@ -249,11 +244,6 @@ export default function SubsTab() {
             error
           )
         }
-
-        console.log(
-          'Profile availability subscription status:',
-          status
-        )
       })
 
     return () => {

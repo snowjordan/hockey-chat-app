@@ -298,11 +298,6 @@ function App() {
                 return
             }
 
-            console.log("Checking authenticated user:", {
-                id: nextSession.user.id,
-                email: nextSession.user.email,
-            })
-
             let {
                 profile,
                 error,
@@ -405,11 +400,6 @@ function App() {
                     return
                 }
             }
-
-            console.log(
-                "Authenticated profile result:",
-                profile
-            )
 
             setCurrentProfile(profile)
             setAccessDenied(false)
@@ -520,7 +510,6 @@ function App() {
     }, [currentProfile]);
 
     const upcomingGame = upcomingGames[nextGameIndex];
-    console.log('upcomingGames length', upcomingGames.length);
     const rawMyTeam = teams.find((t) => t.name === "Red Bricks") ?? teams[0];
 
     const myTeam = rawMyTeam
