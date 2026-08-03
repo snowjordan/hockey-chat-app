@@ -25,11 +25,16 @@ export default function TeamsDirectory() {
                             )
                         )
                     `)
+
+                    console.log('Teams query ran')
+                    console.log('Teams returned from Supabase:', data)
                 
                     if (error) {
-                        console.error(error)
+                        console.error('Teams query error:', error)
+                        return
+
                     } else {
-                        setTeams(data)
+                        setTeams(data ?? [])
                     } 
                 }
 
@@ -39,7 +44,7 @@ export default function TeamsDirectory() {
                 <div className="page-view teams-view">
                     <header className="page-header">
                         <h2>Teams</h2>
-                        <p className="page-subtitle">League teams and  player rosters</p>
+                        <p className="page-subtitle">League teams and player rosters</p>
                     </header>
 
                      <div className="teams-grid teams-grid--page">

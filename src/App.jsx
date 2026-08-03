@@ -460,6 +460,7 @@ function App() {
                     id,
                     name,
                     league_name,
+                    sponsor_image_url,
                     team_members (
                         id,
                         jersey_number,
@@ -481,6 +482,16 @@ function App() {
                 console.error("Error loading teams:", error)
                 return
             }
+
+            const varsityInn = data?.find(
+                (team) => team.name === 'Varsity Inn'
+            )
+
+            console.log('Varsity Inn from query:', varsityInn)
+            console.log(
+                'Varsity Inn sponsor URL from query:',
+                varsityInn?.sponsor_image_url
+            )
 
             setTeams(data ?? [])
         }
@@ -675,6 +686,28 @@ function App() {
                         setEditingPlayer(false)
                     }}
                     onSelectPlayer={openPlayer}
+                    onSponsorImageUpdated={(teamId, newUrl) => {
+                        setTeams((currentTeams) =>
+                            currentTeams.map((currentTeam) =>
+                                currentTeam.id === teamId
+                                    ? {
+                                        ...currentTeam,
+                                        sponsor_image_url: newUrl
+                                      }
+                                    : currentTeam
+                            )
+                        )
+
+                        setSelectedTeam((currentTeam) =>
+                            currentTeam?.id === teamId
+                                ?   {
+                                    ...currentTeam,
+                                    sponsor_image_url: newUrl
+                                    }
+                                : currentTeam
+                        )
+
+                    }}
                 />
             )
         }
@@ -1218,7 +1251,20 @@ function TeamsView({ teams = [], onSelectTeam }) {
     )
 }
 
-function TeamDetail({ team, league, userRsvp, onBack, onSelectPlayer }) {
+function TeamDetail({ team, league, userRsvp, onBack, onSelectPlayer, onSponsorImageUpdated }) {
+
+    const [sponsorFile, setSponsorFile] = useState(null)
+    const [sponsorPreviewUrl, setSponsorPreviewUrl] = useState(
+        team?.sponsor_image_url ?? ''
+    )   
+
+    const [isEditingSponsor, setIsEditingSponsor] = useState(false)
+    const [sponsorImageUrl, setSponsorImageUrl] = useState(
+        team?.sponsor_image_url ?? ''
+    )
+    const [isSavingSponsor, setIsSavingSponsor] = useState(false)
+    const [sponsorError, setSponsorError] = useState('')
+
     const roster = Array.isArray(team?.team_members)
     ? [...team.team_members].sort((a, b) => {
         const aName = a.profiles?.full_name ?? '';
@@ -1228,6 +1274,76 @@ function TeamDetail({ team, league, userRsvp, onBack, onSelectPlayer }) {
        })
     :  []
 
+
+    useEffect(() => {
+        setSponsorImageUrl(team?.sponsor_image_url ?? '')
+        setSponsorPreviewUrl(team?.sponsor_image_url ?? '')
+        setSponsorFile(null)
+        setIsEditingSponsor(false)
+        setSponsorError('') 
+    }, [team?.id, team?.sponsor_image_url])
+
+    async function saveSponsorImage() {
+        setIsSavingSponsor(true)
+        setSponsorError('')
+
+        let savedUrl = team.sponsor_image_url ?? null
+
+        if (sponsorFile) {
+            const extension =
+                sponsorFile.name.split('.').pop()?.toLowerCase() || 'png'
+
+            const filePath =
+                `${team.id}/sponsor-${Date.now()}.${extension}`
+
+            const { error: uploadError } = await supabase.storage
+                .from('team-assets')
+                .upload(filePath, sponsorFile, {
+                    cacheControl: '3600',
+                    upsert: true
+                })
+            
+            if (uploadError) {
+                console.error(
+                    'Error uploading sponsor image:',
+                    uploadError
+                )
+                setSponsorError('Unable to upload the sponsor image.')
+                setIsSavingSponsor(false)
+                return
+            }
+
+            const { data: publicUrlData } = supabase.storage
+                .from('team-assets')
+                .getPublicUrl(filePath)
+
+            savedUrl = publicUrlData.publicUrl
+        }
+
+        const { error: updateError } = await supabase
+            .from('teams')
+            .update({
+                sponsor_image_url: savedUrl
+            })
+            .eq('id', team.id)
+        
+        if (updateError) {
+            console.error(
+                "Error updating sponsor image:", 
+                updateError
+            )
+            setSponsorError("Unable to update the sponsor image.")
+            setIsSavingSponsor(false)
+            return
+        }
+
+        onSponsorImageUpdated?.(team.id, savedUrl)
+
+        setSponsorFile(null)
+        setSponsorPreviewUrl(savedUrl ?? '')
+        setIsEditingSponsor(false)
+        setIsSavingSponsor(false)
+    }
 
 
     return (
@@ -1239,20 +1355,155 @@ function TeamDetail({ team, league, userRsvp, onBack, onSelectPlayer }) {
                 <p className="page-subtitle">{roster.length} players</p>
             </header>
 
+            <div className="team-sponsor-section">
+                {team.sponsor_image_url && !isEditingSponsor && (
+                    <div className="team-sponsor-banner">
+                        <img
+                            src={team.sponsor_image_url}
+                            alt={`${team.name} sponsors`}
+                        />
+                    </div>
+                )}
 
-            <section className="content-card roster-card">
-                <header className="content-card-header"><h2>Roster</h2></header>
-                <table className="roster-table">
-                    <thead>
-                        <tr><th>Name</th><th>#</th><th>Position</th></tr>
-                    </thead>
-                    <tbody>
-                        {roster.map((member) => (
-                                <tr key={member.id} onClick={() => onSelectPlayer(member)}>
-                                    <td className="roster-name">{member.profiles?.full_name ?? 'Unknown player'}</td>
-                                    <td>{member.jersey_number}</td>
-                                    <td>{member.position}</td>
-                                </tr>
+            {!isEditingSponsor ? (
+                <button
+                    type="button"
+                    className="sponsor-edit-button"
+                    onClick={() => setIsEditingSponsor(true)}
+                >
+                    {team.sponsor_image_url
+                        ? 'Edit sponsor image'
+                        : 'Add sponsor image'}
+                </button>
+            ) : (
+                <div className="sponsor-image-editor">
+                    <label className="form-field">
+                        <span>Sponsor image</span>
+                        <p className="field-help">For best results, upload a wide banner image. Recommended size: 1200 × 300 pixels.</p>
+
+                        <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) => {
+                                const file = event.target.files?.[0]
+
+                                if (!file) {
+                                    return
+                                }
+
+                                if (file.size > 5 * 1024 * 1024) {
+                                    setSponsorError(
+                                        "Choose an image smaller than 5 MB."
+                                    )
+                                    return
+                                }
+                                setSponsorFile(file)
+                                setSponsorPreviewUrl(URL.createObjectURL(file))
+                                setSponsorError('')
+                            }}
+                        />
+                    </label>
+
+                    {sponsorPreviewUrl && (
+                        <div className="sponsor-image-preview">
+                            <p>Preview</p>
+
+                            <img
+                                src={sponsorPreviewUrl}
+                                alt="Sponsor banner preview"
+                                onError={() => {
+                                    setSponsorError(
+                                        "The selected image could not be previewed."
+                                    )
+                                }}
+                                onLoad={() => setSponsorError('')}
+                            />
+                        </div>
+                    )}
+
+                    {sponsorError && (
+                        <p className="form-error">{sponsorError}</p>
+                    )}
+
+                    <div className="sponsor-form-actions">
+                        <button
+                            type="button"
+                            className="button button-primary"
+                            disabled={isSavingSponsor || Boolean(sponsorError)}
+                            onClick={saveSponsorImage}
+                        >
+
+                            {isSavingSponsor ? 'Saving...' : 'Save'}
+                        </button>
+
+                        <button
+                            type="button"
+                            className="button button-secondary"
+                            disabled={isSavingSponsor}
+                            onClick={() => {
+                                setSponsorFile(null)
+                                setSponsorPreviewUrl(
+                                    team.sponsor_image_url ?? ''
+                                )
+                                setSponsorError('')
+                                setIsEditingSponsor(false)
+                            }}
+                        >
+                            Cancel
+                        </button>
+
+                        {team.sponsor_image_url && (
+                            <button
+                                type="button"
+                                className="button button-danger"
+                                disabled={isSavingSponsor}
+                                onClick={async () => {
+                                    setIsSavingSponsor(true)
+                                    setSponsorError('')
+
+                                    const { error: removeError } = await supabase
+                                        .from('teams')
+                                        .update({
+                                            sponsor_image_url: null
+                                        })
+                                        .eq('id', team.id)
+                                    
+                                    if (removeError) {
+                                        console.error(
+                                            "Unable to remove the sponsor image."
+                                        )
+                                        setIsSavingSponsor(false)
+                                        return
+                                    }
+
+                                    onSponsorImageUpdated?.(team.id, null)
+                                    setSponsorPreviewUrl('')
+                                    setIsEditingSponsor(false)
+                                    setIsSavingSponsor(false)
+                                }}
+                            >
+                                Remove image
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div> 
+
+
+        <section className="content-card roster-card">
+            <header className="content-card-header"><h2>Roster</h2></header>
+            <table className="roster-table">
+                <thead>
+                    <tr><th>Name</th><th>#</th><th>Position</th></tr>
+                </thead>
+                <tbody>
+                    {roster.map((member) => (
+                            <tr key={member.id} onClick={() => onSelectPlayer(member)}>
+                                <td className="roster-name">{member.profiles?.full_name ?? 'Unknown player'}</td>
+                                <td>{member.jersey_number}</td>
+                                <td>{member.position}</td>
+                            </tr>
                         ))}
                     </tbody>
                 </table>
