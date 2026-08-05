@@ -26,7 +26,6 @@ import Login from './components/Login';
 import SubsTab from './components/SubsTab';
 import ProfileView from './components/ProfileView';
 import SetPassword from './components/SetPassword'
-import { CURRENT_USER_ID } from "./data/demoData.js";
 
 
 const NAV_ITEMS = [
@@ -888,7 +887,7 @@ function App() {
             case "dashboard":
                 return (
                     <DashboardView
-                        currentUserId={CURRENT_USER_ID}
+                        currentUserId={currentUserId}
                         gameContext={gameContext}
                         myTeam={myTeam}
                         userRsvp={userRsvp}
