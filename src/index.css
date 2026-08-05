@@ -450,6 +450,98 @@ body {
 .readiness-ok-text { color: var(--green-600); font-weight: 600; }
 .readiness-warn-text { color: var(--maybe-text); font-weight: 600; }
 
+
+/* ── Announcment cards ── */
+
+
+.announcements-card-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.announcements-card-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-width: 0;
+}
+
+.announcements-card-title-row h2 {
+    margin: 0;
+}
+
+.announcements-card-title-row .content-card-meta {
+    margin-left: auto;
+    white-space: nowrap;
+}
+
+.announcement-create-btn {
+    white-space: nowrap;
+}
+
+.notices-page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+}
+
+.notices-page-header .action-btn {
+    flex-shrink: 0;
+}
+
+.notices-view .content-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.notices-view .content-card-header h2 {
+    margin: 0;
+}
+
+.notices-view .content-card-meta {
+    margin-left: auto;
+    white-space: nowrap;
+}
+
+.notice-toggle {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 72px 150px minmax(0, 1fr) 20px;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+}
+
+.notice-date {
+    white-space: nowrap;
+}
+
+.notice-title {
+    min-width: 0;
+}
+
+.notice-summary {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.notice-toggle svg {
+    justify-self: end;
+}
+
 /* ── Content cards ── */
 
 .content-card {
@@ -461,9 +553,9 @@ body {
 
 .content-card-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
   margin-bottom: 10px;
 }
 
@@ -479,6 +571,13 @@ body {
 .content-card-meta {
   font-size: var(--text-xs);
   color: var(--steel-500);
+}
+
+.content-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
 }
 
 .content-card--hero {
@@ -2422,6 +2521,20 @@ button {
     padding-left: 10px;
   }
 
+  .content-card-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .content-card-heading {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .content-card-header .action-btn {
+        width: 100%;
+    }
+
   .notice-toggle {
     grid-template-columns: 1fr 24px;
     padding: 10px 12px;
@@ -2450,6 +2563,7 @@ button {
     font-size: var(--text-sm);
   }
 }
+
 
 .profile-form-grid {
   display: grid;
@@ -2989,6 +3103,14 @@ button {
     width: 100%;
     min-width: 0;
   }
+
+  .notices-page-header {
+        flex-direction: column;
+    }
+
+    .notices-page-header .action-btn {
+        width: 100%;
+    }
   
   .directory-contact-row {
     grid-template-columns: minmax(0, 1fr) auto;
@@ -3063,6 +3185,76 @@ button {
     max-height: none;
     object-fit: contain;
   }
+  
+  .notices-view {
+        padding-inline: 16px;
+    }
+
+    .notices-page-header {
+        margin-bottom: 16px;
+    }
+
+    .notices-page-header .action-btn {
+        width: 100%;
+    }
+
+    .notices-view .content-card {
+        padding: 18px;
+    }
+
+    .notices-view .content-card-header {
+        align-items: center;
+        flex-direction: row;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .notice-toggle {
+        position: relative;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        grid-template-areas:
+            "date date"
+            "title title"
+            "summary chevron";
+        gap: 10px 12px;
+        padding: 16px 6px;
+    }
+
+    .notice-date {
+        grid-area: date;
+        font-size: 0.9rem;
+    }
+
+    .notice-title {
+        grid-area: title;
+    }
+
+    .notice-summary {
+        grid-area: summary;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: unset;
+        line-height: 1.45;
+    }
+
+    .notice-toggle svg {
+        grid-area: chevron;
+        align-self: end;
+        justify-self: end;
+    }
+
+    .notice-expanded {
+        padding: 0 6px 16px;
+    }
+
+    .announcement-form-card .form-actions {
+        flex-direction: column-reverse;
+    }
+
+    .announcement-form-card .form-actions .action-btn {
+        width: 100%;
+    }
   
 }
 

@@ -4,11 +4,6 @@ import { loadAuthenticatedProfile } from "./lib/authHelpers.js";
 import { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 import HockeyIcon from "./components/HockeyIcon.jsx";
 import {
-    demoLeague,
-    CURRENT_USER_ID,
-    CURRENT_TEAM_ID,
-} from "./data/demoData.js";
-import {
     FEED_TYPE_LABELS,
     getTeamName,
     getTeamNextGame,
@@ -31,8 +26,8 @@ import Login from './components/Login';
 import SubsTab from './components/SubsTab';
 import ProfileView from './components/ProfileView';
 import SetPassword from './components/SetPassword'
+import { CURRENT_USER_ID } from "./data/demoData.js";
 
-const league = demoLeague;
 
 const NAV_ITEMS = [
     { id: "dashboard", label: "Dashboard" },
@@ -144,19 +139,38 @@ function LeagueFeed({ items, limit, expandedId, onToggle, title = "League Feed" 
     );
 }
 
-function TonightsRoster({ game, teams = [], userRsvp, onPromptPlayers }) {
+function TonightsRoster({ game, teams = [], userRsvp, currentUserId, onPromptPlayers }) {
     const myTeam =
-        teams.find((team) => team.id === CURRENT_TEAM_ID) ??
-        teams.find((team) => team.name === "Red Bricks") ??
-        teams[0]
+        teams.find((team) =>
+            (team.team_members ?? []).some((member) =>
+                member.profile_id === currentUserId ||
+                member.profiles?.id === currentUserId
+            )
+        ) ?? null
 
-    const players = myTeam?.team_members ?? myTeam?.roster ?? []
+    const players =
+        myTeam?.team_members ??
+        myTeam?.roster ??
+        []
 
     if (!game) {
         return (
             <aside className="right-rail">
                 <h3 className="rail-heading">Tonight&apos;s Roster</h3>
                 <p className="rail-empty">No upcoming game.</p>
+            </aside>
+        )
+    }
+
+    if (!myTeam) {
+        return (
+            <aside className="right-rail">
+                <h3 className="rail-heading">
+                    Tonight&apos;s Roster
+                </h3>
+                <p className="rail-empty">
+                    No team is associated with this profile.
+                </p>
             </aside>
         )
     }
@@ -184,7 +198,7 @@ function TonightsRoster({ game, teams = [], userRsvp, onPromptPlayers }) {
                     const status = resolveRsvp(
                         player,
                         userRsvp,
-                        CURRENT_USER_ID
+                        currentUserId
                     )
 
                     return (
@@ -255,21 +269,43 @@ function App() {
     const [selectedTeam, setSelectedTeam] = useState(null);
     const [editingPlayer, setEditingPlayer] = useState(false);
     const [selectedPlayer, setSelectedPlayer] = useState(null);
-    const [activeChatId, setActiveChatId] = useState(league.chats[0].id);
+    const [activeChatId, setActiveChatId] = useState(null);
     const [userRsvp, setUserRsvp] = useState("going");
     const [subRequested, setSubRequested] = useState(false);
-    const [teamAttendance, setTeamAttendance] = useState(
-        league.teams.find((t) => t.id === CURRENT_TEAM_ID).attendance
-    );
-    const [chatMessages, setChatMessages] = useState(() =>
-        Object.fromEntries(league.chats.map((c) => [c.id, [...c.messages]]))
-    );
+    const [teamAttendance, setTeamAttendance] = useState({
+        going: 0,
+        maybe: 0,
+        out: 0,
+        noResponse: 0,
+    });
+
+    const [chatMessages, setChatMessages] = useState({});
+    const [chats, setChats] = useState([]);
     const [chatDraft, setChatDraft] = useState("");
     const [expandedFeedId, setExpandedFeedId] = useState(null);
     const [expandedNoticeId, setExpandedNoticeId] = useState(null);
 
     const [upcomingGames, setUpcomingGames] = useState([]);
     const [nextGameIndex, setNextGameIndex] = useState(0);
+
+    const [leagueAlerts, setLeagueAlerts] = useState([]);
+    const [leagueAlertsLoading, setLeagueAlertsLoading] = useState(false);
+    const [leagueAlertsError, setLeagueAlertsError] = useState("");
+
+    const [announcementFormOpen, setAnnouncementFormOpen] =
+    useState(false)
+
+    const [announcementDraft, setAnnouncementDraft] = useState({
+        title: "",
+        summary: "",
+        message: "",
+    })
+
+    const [announcementSubmitting, setAnnouncementSubmitting] =
+        useState(false)
+
+    const [announcementSubmitError, setAnnouncementSubmitError] =
+        useState("")
 
     const [teams, setTeams] = useState([]);
 
@@ -278,6 +314,13 @@ function App() {
     const searchParams = new URLSearchParams(window.location.search)
 
     const isSetPasswordPage = window.Location.pathname === "/set-password" || searchParams.get("page") === "set-password"
+
+    const currentTeamId =
+        teams.find((team) =>
+            team.team_members?.some(
+                (member) => member.profile_id === currentProfile?.id
+            )
+        )?.id ?? null
 
     useEffect(() => {
         let isMounted = true
@@ -447,6 +490,120 @@ function App() {
         }
     }, [])
 
+    async function loadLeagueAlerts(leagueName) {
+        if (!leagueName) {
+            setLeagueAlerts([]);
+            return;
+        }
+
+        setLeagueAlertsLoading(true);
+        setLeagueAlertsError("");
+
+        const { data, error } = await supabase
+            .from("announcements")
+            .select(`
+                id,
+                title,
+                summary,
+                message,
+                related_game_id,
+                created_at
+            `)
+            .eq("league_name", leagueName)
+            .is("team_id", null)
+            .order("created_at", { ascending: false });
+
+        if (error) {
+            console.error("Unable to load league announcements:", error);
+            setLeagueAlerts([]);
+            setLeagueAlertsError("Unable to load league announcements.");
+            setLeagueAlertsLoading(false);
+            return;
+        }
+
+        const formattedAlerts = (data ?? []).map((announcement) => ({
+            id: announcement.id,
+            title: announcement.title,
+            summary: announcement.summary,
+            message: announcement.message,
+            relatedGameId: announcement.related_game_id,
+            date: new Intl.DateTimeFormat("en-US", {
+                month: "short",
+                day: "numeric",
+            }).format(new Date(announcement.created_at)),
+        }));
+
+        setLeagueAlerts(formattedAlerts);
+        setLeagueAlertsLoading(false);
+    }
+
+    async function handleCreateAnnouncement(event) {
+        event.preventDefault()
+
+        const title = announcementDraft.title.trim()
+        const summary = announcementDraft.summary.trim()
+        const message = announcementDraft.message.trim()
+
+        if (currentProfile?.is_admin !== true) {
+            setAnnouncementSubmitError(
+                "You do not have permission to create announcements."
+            )
+            return
+        }
+
+        if (!title || !message) {
+            setAnnouncementSubmitError(
+                "Enter a title and announcement message."
+            )
+            return
+        }
+
+        if (!currentLeagueName || !currentProfile?.id) {
+            setAnnouncementSubmitError(
+                "The league or signed-in profile could not be identified."
+            )
+            return
+        }
+
+        setAnnouncementSubmitting(true)
+        setAnnouncementSubmitError("")
+
+        const { error } = await supabase
+            .from("announcements")
+            .insert({
+                league_name: currentLeagueName,
+                team_id: null,
+                title,
+                summary: summary || null,
+                message,
+                created_by: currentProfile.id,
+            })
+        
+        if (error) {
+            console.error(
+                "Unable to create league announcements:",
+                error
+            )
+
+            setAnnouncementSubmitError(
+                "Unable to create the announcement."
+            )
+            setAnnouncementSubmitting(false)
+            return
+        }
+
+        setAnnouncementDraft({
+            title: "",
+            summary: "",
+            message: "",
+        })
+
+        setAnnouncementFormOpen(false)
+        setAnnouncementSubmitting(false)
+
+        await loadLeagueAlerts(currentLeagueName)
+    }
+
     useEffect(() => {
         if (!currentProfile) {
             setTeams([])
@@ -499,6 +656,12 @@ function App() {
         loadTeams()
     }, [currentProfile])
 
+    const currentLeagueName = teams[0]?.league_name ?? null;
+
+    useEffect(() => {
+        loadLeagueAlerts(currentLeagueName);
+    }, [currentLeagueName]);
+
     useEffect(() => {
         if (!currentProfile) {
             return
@@ -532,17 +695,23 @@ function App() {
         }
       : null;
 
+    const currentUserId = currentProfile?.id ?? null;
+
     const gameContext = buildNextGameContext({
         game: upcomingGame,
         myTeam,
-        teams: teams,
+        teams,
         attendance: {
             ...teamAttendance,
-            noResponse: countNoResponse(myTeam?.roster ?? [], userRsvp, CURRENT_USER_ID),
+            noResponse: countNoResponse(
+                myTeam?.roster ?? [],
+                userRsvp,
+                currentUserId
+            ),
         },
         subRequested,
         userRsvp,
-        currentUserId: CURRENT_USER_ID,
+        currentUserId,
     });
 
     const handleRsvp = (status) => {
@@ -608,7 +777,7 @@ function App() {
         setChatDraft("");
     };
 
-    const feedItems = league.feed ?? league.alerts.map((a) => ({ ...a, type: "schedule_change" }));
+    const [feedItems, setFeedItems] = useState([]);
 
     const mainContent = (() => {
         if (selectedPlayer && selectedTeam) {
@@ -642,6 +811,8 @@ function App() {
             const isAdmin = currentProfile?.is_admin === true
 
             const canEditProfile = isOwnProfile || isAdmin
+
+            const currentLeagueName = teams[0]?.league_name ?? "";
 
             if (editingPlayer && canEditProfile) {
                 return (
@@ -678,7 +849,8 @@ function App() {
             return (
                 <TeamDetail
                     team={selectedTeam}
-                    league={league}
+                    teams={teams}
+                    currentUserId={currentUserId}
                     userRsvp={userRsvp}
                     onBack={() => {
                         setSelectedTeam(null)
@@ -716,6 +888,7 @@ function App() {
             case "dashboard":
                 return (
                     <DashboardView
+                        currentUserId={CURRENT_USER_ID}
                         gameContext={gameContext}
                         myTeam={myTeam}
                         userRsvp={userRsvp}
@@ -741,7 +914,9 @@ function App() {
             case "schedule":
                 return (
                     <ScheduleView
-                        league={league}
+                        teams={teams}
+                        currentUserId={currentUserId}
+                        currentTeamId={currentTeamId}
                         userRsvp={userRsvp}
                         onRsvp={handleRsvp}
                         gameContext={gameContext}
@@ -752,7 +927,7 @@ function App() {
                             setSubRequested(true)
                             openChat(getChatPrefill("sub", gameContext))
                         }}
-                    />
+                    />                  
                 )
 
             case "teams":
@@ -772,23 +947,48 @@ function App() {
             case "notices":
                 return (
                     <NoticesView
-                        league={league}
+                        alerts={leagueAlerts}
+                        alertsLoading={leagueAlertsLoading}
+                        alertsError={leagueAlertsError}
                         feedItems={feedItems}
                         expandedNoticeId={expandedNoticeId}
                         onToggleNotice={setExpandedNoticeId}
                         expandedFeedId={expandedFeedId}
                         onToggleFeed={setExpandedFeedId}
                         onViewGame={() => navigateTo("schedule")}
+                        
+                        canCreateAnnouncement={currentProfile?.is_admin === true}
+                        announcementFormOpen={announcementFormOpen}
+                        announcementDraft={announcementDraft}
+                        announcementSubmitting={announcementSubmitting}
+                        announcementSubmitError={announcementSubmitError}
+
+                        onOpenAnnouncementForm={() => {
+                            setAnnouncementSubmitError("")
+                            setAnnouncementFormOpen(true)
+                        }}
+
+                        onCloseAnnouncementForm={() => {
+                            setAnnouncementSubmitError("")
+                            setAnnouncementFormOpen(false)
+                        }}
+
+                        onAnnouncementDraftChange={setAnnouncementDraft}
+                        onCreateAnnouncement={handleCreateAnnouncement}
                     />
-                )
+                );
 
             case "chat":
                 return (
                     <ChatView
-                        league={league}
+                        chats={chats}
                         activeChatId={activeChatId}
                         onSelectChat={setActiveChatId}
-                        messages={chatMessages[activeChatId] ?? []}
+                        messages={
+                            activeChatId
+                                ? chatMessages[activeChatId] ?? []
+                                : []
+                        }
                         draft={chatDraft}
                         onDraftChange={setChatDraft}
                         onSend={sendChatMessage}
@@ -861,7 +1061,11 @@ function App() {
 
                     <div>
                         <h1 className="app-bar-title">Hockey League</h1>
-                        <span className="app-bar-subtitle">{league.name} · Season 2026</span>
+                        <span className="app-bar-subtitle">
+                            {currentLeagueName
+                                ? `${currentLeagueName} · Season 2026`
+                                : "Season 2026"}
+                        </span>
                     </div>
                 </div>
                 {gameContext && (
@@ -964,6 +1168,7 @@ function App() {
                     game={upcomingGame}
                     teams={teams}
                     userRsvp={userRsvp}
+                    currentUserId={currentUserId}
                     onPromptPlayers={promptNoResponse}
                 />
                 )}
@@ -973,6 +1178,7 @@ function App() {
 }
 
 function DashboardView({
+    currentUserId,
     gameContext,
     myTeam,
     userRsvp,
@@ -989,7 +1195,11 @@ function DashboardView({
     games,
 }) {
     const subStatus = formatSubStatus(myTeam?.substituteStatus, subRequested);
-    const noResponse = countNoResponse(myTeam?.roster ?? [], userRsvp, CURRENT_USER_ID);
+    const noResponse = countNoResponse(
+        myTeam?.roster ?? [],
+        userRsvp,
+        currentUserId
+    );
     const attendanceDetail = gameContext ? formatAttendanceDetail(gameContext) : "";
 
     return (
@@ -1134,7 +1344,7 @@ function formatGameTime(timeString) {
     });
 }
 
-function ScheduleView({ league, userRsvp, onRsvp, gameContext, onMessageTeam, onRequestSub }) {
+function ScheduleView({ teams, currentUserId, currentTeamId, userRsvp, onRsvp, gameContext, onMessageTeam, onRequestSub }) {
     const [games, setGames] = useState([])
     const [detailGame, setDetailGame] = useState(null);
     const [rsvpGameId, setRsvpGameId] = useState(null);
@@ -1251,7 +1461,7 @@ function TeamsView({ teams = [], onSelectTeam }) {
     )
 }
 
-function TeamDetail({ team, league, userRsvp, onBack, onSelectPlayer, onSponsorImageUpdated }) {
+function TeamDetail({ team, teams, games, currentUserId, league, userRsvp, onBack, onSelectPlayer, onSponsorImageUpdated }) {
 
     const [sponsorFile, setSponsorFile] = useState(null)
     const [sponsorPreviewUrl, setSponsorPreviewUrl] = useState(
@@ -1513,7 +1723,7 @@ function TeamDetail({ team, league, userRsvp, onBack, onSelectPlayer, onSponsorI
 }
 
 function PlayerDetail({ player, userRsvp, onBack }) {
-    const status = resolveRsvp(player, userRsvp, CURRENT_USER_ID);
+    const status = resolveRsvp(player, userRsvp, currentUserId);
     return (
         <div className="page-view player-detail-view">
             <button type="button" className="back-button" onClick={onBack}>← Back to roster</button>
@@ -1533,48 +1743,197 @@ function PlayerDetail({ player, userRsvp, onBack }) {
     );
 }
 
-function NoticesView({ league, feedItems, expandedNoticeId, onToggleNotice, expandedFeedId, onToggleFeed, onViewGame }) {
+function NoticesView({
+    alerts,
+    alertsLoading,
+    alertsError,
+    feedItems,
+    expandedNoticeId,
+    onToggleNotice,
+    expandedFeedId,
+    onToggleFeed,
+    onViewGame,
+
+    isAdmin,
+    canCreateAnnouncement,
+    announcementFormOpen,
+    announcementDraft,
+    announcementSubmitting,
+    announcementSubmitError,
+    onOpenAnnouncementForm,
+    onCloseAnnouncementForm,
+    onAnnouncementDraftChange,
+    onCreateAnnouncement,
+
+    }) {
+
     return (
         <div className="page-view notices-view">
-            <header className="page-header">
-                <h2>League Notices</h2>
-                <p className="page-subtitle">Official announcements and schedule changes</p>
+            <header className="page-header notices-page-header">
+                <div>
+                    <h2>League Notices</h2>
+                    <p className="page-subtitle">
+                        Official announcements and schedule changes
+                    </p>
+                </div>
             </header>
+            {canCreateAnnouncement && announcementFormOpen && (
+                <section className="content-card announcement-form-card">
+                    <header className="content-card-header">
+                        <div>
+                            <h2>New Announcement</h2>
+                            <p className="page-subtitle">
+                                Publish a message to everyone in the league.
+                            </p>
+                        </div>
+                    </header>
+
+                    <form
+                        className="announcement-form"
+                        onSubmit={onCreateAnnouncement}
+                    >
+                        <label className="form-field">
+                            <span>Title</span>
+                            <input
+                                type="text"
+                                value={announcementDraft.title}
+                                maxLength={120}
+                                required
+                                onChange={(event) =>
+                                onAnnouncementDraftChange({
+                                ...announcementDraft,
+                                title: event.target.value,
+                            })
+                        }
+                    />
+                </label>
+
+                <label className="form-field">
+                    <span>Summary</span>
+                    <input
+                        type="text"
+                        value={announcementDraft.summary}
+                        maxLength={180}
+                        placeholder="Optional short description"
+                        onChange={(event) =>
+                            onAnnouncementDraftChange({
+                                ...announcementDraft,
+                                summary: event.target.value,
+                            })
+                        }
+                    />
+                </label>
+
+                <label className="form-field">
+                    <span>Message</span>
+                    <textarea
+                        value={announcementDraft.message}
+                        rows={5}
+                        required
+                        onChange={(event) =>
+                            onAnnouncementDraftChange({
+                                ...announcementDraft,
+                                message: event.target.value,
+                            })
+                        }
+                    />
+                </label>
+
+                {announcementSubmitError && (
+                    <p className="form-error">
+                        {announcementSubmitError}
+                    </p>
+                )}
+
+                <div className="form-actions">
+                    <button
+                        type="button"
+                        className="action-btn action-btn--outline"
+                        onClick={onCloseAnnouncementForm}
+                        disabled={announcementSubmitting}
+                    >
+                        Cancel
+                    </button>
+
+                    <button
+                        type="submit"
+                        className="action-btn action-btn--primary"
+                        disabled={announcementSubmitting}
+                    >
+                        {announcementSubmitting
+                            ? "Publishing..."
+                            : "Publish announcement"}
+                    </button>
+                </div>
+            </form>
+        </section>
+    )}          
+
+            <div>
+                    {canCreateAnnouncement && (
+                <button
+                    type="button"
+                    className="action-btn action-btn--primary"
+                    onClick={onOpenAnnouncementForm}
+                >
+                    Create announcement
+                </button>
+                )}
+            </div>
             <section className="content-card">
                 <header className="content-card-header">
-                    <h2>Announcements</h2>
-                    <span className="content-card-meta">{league.alerts.length} notices</span>
+                        <h2>Announcements</h2>
+                        <span className="content-card-meta">
+                            {alerts.length} {alerts.length === 1 ? "notice" : "notices"}
+                        </span>
                 </header>
-                {league.alerts.map((alert) => {
-                    const expanded = expandedNoticeId === alert.id;
-                    return (
-                        <div key={alert.id} className="notice-expandable">
-                            <button type="button" className="notice-toggle" onClick={() => onToggleNotice(expanded ? null : alert.id)}>
-                                <time className="notice-date">{alert.date}</time>
-                                <strong className="notice-title">{alert.title}</strong>
-                                <span className="notice-summary">{alert.summary ?? alert.message}</span>
-                                {expanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
-                            </button>
-                            {expanded && (
-                                <div className="notice-expanded">
-                                    <p className="notice-message">{alert.message}</p>
-                                    <span className="notice-meta">Posted {alert.date}</span>
-                                    {alert.relatedGameId && (
-                                        <button type="button" className="action-btn action-btn--ghost action-btn--sm" onClick={onViewGame}>View game</button>
+                {alertsLoading ? (
+                    <p className="empty-state">Loading announcements...</p>
+                ) : alertsError ? (
+                    <p className="empty-state">{alertsError}</p>
+                ) : alerts.length === 0 ? (
+                    <p className="empty-state">No league announcements.</p>
+                ) : (
+                    alerts.map((alert) => {
+                        const expanded = expandedNoticeId === alert.id;
+                        return (
+                            <div key={alert.id} className="notice-expandable">
+                                <button type="button" className="notice-toggle" onClick={() => onToggleNotice(expanded ? null : alert.id)}>
+                                    <time className="notice-date">{alert.date}</time>
+                                    <strong className="notice-title">{alert.title}</strong>
+                                    <span className="notice-summary">{alert.summary ?? alert.message}</span>
+                                    {expanded ? (
+                                        <IconChevronDown size={16} />
+                                    ) : (
+                                        <IconChevronRight size={16} />
                                     )}
-                                </div>
-                            )}
-                        </div>
-                    );
-                })}
+                                </button>
+
+                                {expanded && (
+                                    <div className="notice-expanded">
+                                        <p className="notice-message">{alert.message}</p>
+                                        <span className="notice-meta">Posted {alert.date}</span>
+                                        {alert.relatedGameId && (
+                                            <button type="button" className="action-btn action-btn--ghost action-btn--sm" onClick={onViewGame}>View game</button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })
+                )}
             </section>
-            <LeagueFeed items={feedItems} expandedId={expandedFeedId} onToggle={onToggleFeed} />
+            <LeagueFeed
+                items={feedItems}
+                expandedId={expandedFeedId}
+                onToggle={onToggleFeed}
+            />
         </div>
     );
 }
 
 function ChatView({
-    league,
+    chats = [],
     activeChatId,
     onSelectChat,
     messages,
@@ -1587,7 +1946,30 @@ function ChatView({
     onMessageGame,
     onPromptNoResponse,
 }) {
-    const chat = league.chats.find((c) => c.id === activeChatId) ?? league.chats[0];
+
+    const chat =
+        chats.find((item) => item.id === activeChatId) ??
+        chats[0] ??
+        null
+
+    if (!chat) {
+        return (
+            <div className="page-view chat-view">
+                <header className="page-header">
+                    <h2>Chat</h2>
+                    <p className="page-subtitle">
+                        Team and league conversations
+                    </p>
+                </header>
+
+                <section className="content-card">
+                    <p className="empty-state">
+                        No chat channels are available yet.
+                    </p>
+                </section>
+            </div>
+        )
+    }
 
     const handleKeyDown = (e) => {
         if (e.key === "Enter" && !e.shiftKey) {
@@ -1601,16 +1983,20 @@ function ChatView({
             <div className="chat-workspace">
                 <aside className="chat-channels">
                     <header className="chat-channels-header">Channels</header>
-                    {league.chats.map((ch) => (
-                        <button
-                            key={ch.id}
-                            type="button"
-                            className={`chat-channel${ch.id === activeChatId ? " is-active" : ""}`}
-                            onClick={() => onSelectChat(ch.id)}
-                        >
-                            #{ch.name}
-                        </button>
-                    ))}
+                    {chats.length === 0 ? (
+                        <p className="empty-state">No chat channels yet.</p>
+                    ) : (
+                        chats.map((ch) => (
+                            <button
+                                key={ch.id}
+                                type="button"
+                                className={`chat-channel${ch.id === activeChatId ? " is-active" : ""}`}
+                                onClick={() => onSelectChat(ch.id)}
+                            >
+                                #{ch.name}
+                            </button>
+                        ))
+                    )}
                 </aside>
                 <div className="chat-main">
                     <header className="chat-main-header"><h2>#{chat.name}</h2></header>
