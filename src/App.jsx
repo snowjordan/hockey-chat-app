@@ -105,8 +105,23 @@ function LeagueFeed({ items, limit, expandedId, onToggle, title = "League Feed" 
                 <ul className="feed-list">
                     {visible.map((item) => {
                         const expanded = expandedId === item.id;
+
+                        const attendanceStatusClass =
+                            item.type === "attendance_update"
+                                ? item.message.includes("marked Going")
+                                    ? "feed-item--going"
+                                    : item.message.includes("marked Maybe")
+                                    ? "feed-item--maybe"
+                                    : item.message.includes("marked Out")
+                                    ? "feed-item--out"
+                                    : ""
+                                : "";
+
                         return (
-                            <li key={item.id} className={`feed-item feed-item--${item.type}`}>
+                            <li 
+                                key={item.id} 
+                                className={`feed-item feed-item--${item.type} ${attendanceStatusClass}`}
+                            >
                                 <button
                                     type="button"
                                     className="feed-item-toggle"
@@ -269,7 +284,7 @@ function App() {
     const [editingPlayer, setEditingPlayer] = useState(false);
     const [selectedPlayer, setSelectedPlayer] = useState(null);
     const [activeChatId, setActiveChatId] = useState(null);
-    const [userRsvp, setUserRsvp] = useState("going");
+    const [userRsvp, setUserRsvp] = useState("pending");
     const [subRequested, setSubRequested] = useState(false);
     const [teamAttendance, setTeamAttendance] = useState({
         going: 0,
@@ -306,13 +321,17 @@ function App() {
     const [announcementSubmitError, setAnnouncementSubmitError] =
         useState("")
 
+    const [feedItems, setFeedItems] = useState([]);
+    const [feedLoading, setFeedLoading] = useState(false)
+    const [feedError, setFeedError] = useState("")
+
     const [teams, setTeams] = useState([]);
 
     const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
     const searchParams = new URLSearchParams(window.location.search)
 
-    const isSetPasswordPage = window.Location.pathname === "/set-password" || searchParams.get("page") === "set-password"
+    const isSetPasswordPage = window.location.pathname === "/set-password" || searchParams.get("page") === "set-password"
 
     const currentTeamId =
         teams.find((team) =>
@@ -567,7 +586,7 @@ function App() {
         setAnnouncementSubmitting(true)
         setAnnouncementSubmitError("")
 
-        const { error } = await supabase
+        const { data: createdAnnouncement, error: announcementError, } = await supabase
             .from("announcements")
             .insert({
                 league_name: currentLeagueName,
@@ -577,11 +596,13 @@ function App() {
                 message,
                 created_by: currentProfile.id,
             })
+            .select("id")
+            .single()
         
-        if (error) {
+        if (announcementError) {
             console.error(
                 "Unable to create league announcements:",
-                error
+                announcementError
             )
 
             setAnnouncementSubmitError(
@@ -591,16 +612,25 @@ function App() {
             return
         }
 
+        await createLeagueFeedEvent({
+            eventType: "announcement",
+            title: "New league announcement",
+            message: `${currentProfile.full_name ?? "An admin"} posted “${title}.”`,
+            relatedEntityType: "announcement",
+            relatedEntityId: createdAnnouncement.id,
+        });
+
         setAnnouncementDraft({
             title: "",
             summary: "",
             message: "",
-        })
+        });
 
-        setAnnouncementFormOpen(false)
-        setAnnouncementSubmitting(false)
+        setAnnouncementFormOpen(false);
+        setAnnouncementSubmitting(false);
 
-        await loadLeagueAlerts(currentLeagueName)
+        await loadLeagueAlerts(currentLeagueName);
+    
     }
 
     useEffect(() => {
@@ -643,12 +673,6 @@ function App() {
                 (team) => team.name === 'Varsity Inn'
             )
 
-            console.log('Varsity Inn from query:', varsityInn)
-            console.log(
-                'Varsity Inn sponsor URL from query:',
-                varsityInn?.sponsor_image_url
-            )
-
             setTeams(data ?? [])
         }
 
@@ -658,7 +682,14 @@ function App() {
     const currentLeagueName = teams[0]?.league_name ?? null;
 
     useEffect(() => {
+        if (!currentLeagueName) {
+            setLeagueAlerts([]);
+            setFeedItems([]);
+            return;
+        }
+        
         loadLeagueAlerts(currentLeagueName);
+        loadLeagueFeed(currentLeagueName);
     }, [currentLeagueName]);
 
     useEffect(() => {
@@ -696,6 +727,31 @@ function App() {
 
     const currentUserId = currentProfile?.id ?? null;
 
+    useEffect(() => {
+        if (!upcomingGame?.id || !currentProfile?.id) {
+            setUserRsvp("pending");
+            return;
+        }
+        
+        async function loadCurrentRsvp() {
+            const { data, error } = await supabase
+                .from("game_rsvps")
+                .select("status")
+                .eq("game_id", upcomingGame.id)
+                .eq("profile_id", currentProfile.id)
+                .maybeSingle();
+
+                if (error) {
+                    console.error("Unable to load RSVP:", error);
+                    return;
+                }
+
+                setUserRsvp(data?.status ?? "pending");
+            }
+
+            loadCurrentRsvp();
+    }, [upcomingGame?.id, currentProfile?.id]);
+
     const gameContext = buildNextGameContext({
         game: upcomingGame,
         myTeam,
@@ -713,17 +769,70 @@ function App() {
         currentUserId,
     });
 
-    const handleRsvp = (status) => {
-        const prev = userRsvp;
+
+    async function handleRsvp(status) {
+        if (
+            !upcomingGame?.id ||
+            !currentProfile?.id ||
+            status === userRsvp
+        ) {
+            return;
+        }
+
+        const previousStatus = userRsvp;
+
+        const { error: rsvpError } = await supabase
+            .from("game_rsvps")
+            .upsert(
+                {
+                    game_id: upcomingGame.id,
+                    profile_id: currentProfile.id,
+                    status,
+                    updated_at: new Date().toISOString(),
+                },
+                {
+                    onConflict: "game_id,profile_id",
+                }
+            );
+
+        if (rsvpError) {
+            console.error("Unable to save RSVP:", rsvpError);
+            return;
+        }
+
         setUserRsvp(status);
-        if (prev === status) return;
+
         setTeamAttendance((current) => {
             const next = { ...current };
-            if (prev && prev !== "pending") next[prev] = Math.max(0, (next[prev] ?? 0) - 1);
+
+            if (
+                previousStatus && 
+                previousStatus !== "pending"
+            ) {
+                next[previousStatus] = Math.max(
+                    0, 
+                    (next[previousStatus] ?? 0) - 1
+                );
+            }
+        
             next[status] = (next[status] ?? 0) + 1;
+
             return next;
         });
-    };
+
+        await createLeagueFeedEvent({
+            eventType: "attendance_update",
+            title: "Attendance updated",
+            message: `${
+                currentProfile.full_name ?? "A player"
+            } marked ${rsvpLabel(status)} for ${
+                gameContext?.matchup ?? "the next game"
+            }.`,
+            teamId: currentTeamId,
+            relatedEntityType: "game",
+            relatedEntityId: upcomingGame.id,
+        });
+    }   
 
     const navigateTo = (view) => {
         setActiveView(view)
@@ -776,7 +885,103 @@ function App() {
         setChatDraft("");
     };
 
-    const [feedItems, setFeedItems] = useState([]);
+    // League feed functions
+
+    async function loadLeagueFeed(leagueName) {
+        if (!leagueName) {
+            setFeedItems([])
+            return
+        }
+
+        setFeedLoading(true)
+        setFeedError("")
+
+        const { data, error } = await supabase
+            .from("league_feed_events")
+            .select(`
+                id,
+                event_type,
+                title,
+                message,
+                related_entity_type,
+                related_entity_id,
+                created_at
+            `)
+            .eq("league_name", leagueName)
+            .order("created_at", { ascending: false })
+            .limit(50)
+        
+            if (error) {
+                console.error("Unable to load league feed", error)
+                setFeedItems([])
+                setFeedError("Unable to load league activity.")
+                setFeedLoading(false)
+                return
+            }
+
+            const formattedFeedItems = (data ?? []).map((event) =>  ({
+                    id: event.id,
+                    type: event.event_type,
+                    title: event.title,
+                    message: event.message,
+                    date: new Intl.DateTimeFormat("en-US", {
+                        month: "short",
+                        day: "numeric",
+                    }).format(new Date(event.created_at)),
+                    relatedEntityType: event.related_entity_type,
+                    relatedEntityId: event.related_entity_id,
+                }));
+            
+            setFeedItems(formattedFeedItems)
+            setFeedLoading(false)
+        }
+    
+    async function createLeagueFeedEvent({
+        eventType,
+        title,
+        message,
+        teamId = null,
+        relatedEntityType = null,
+        relatedEntityId = null
+    }) {
+        if(!currentLeagueName || !currentProfile?.id) {
+            return {
+                error: new Error(
+                    "League or signed-in profile is unavailable."
+                ),
+            };
+        }
+        
+        const { error: feedEventError } = await supabase
+            .from("league_feed_events")
+            .insert({
+                league_name: currentLeagueName,
+                team_id: teamId,
+                actor_profile_id: currentProfile.id,
+                event_type: eventType,
+                title,
+                message,
+                related_entity_type: relatedEntityType,
+                related_entity_id: relatedEntityId,
+            });
+        
+        if (feedEventError) {
+            console.error(
+                "Unable to create league feed event:", 
+                feedEventError
+            );
+
+            return {
+                error: feedEventError,
+            };
+        }
+
+        await loadLeagueFeed(currentLeagueName);
+
+        return { 
+            error: null, 
+        };
+    }
 
     const mainContent = (() => {
         if (selectedPlayer && selectedTeam) {

@@ -1,4 +1,5 @@
 export const FEED_TYPE_LABELS = {
+    announcement: "ANNOUNCEMENT",
     schedule_change: "Schedule",
     attendance_update: "Attendance",
     chat_activity: "Chat",

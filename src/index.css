@@ -1394,6 +1394,18 @@ button {
   overflow: hidden;
 }
 
+.feed-item--going {
+    border-left-color: #2f9e66;
+}
+
+.feed-item--maybe {
+    border-left-color: #d99a00;
+}
+
+.feed-item--out {
+    border-left-color: #d64545;
+}
+
 .feed-item--schedule_change { border-left-color: var(--blue-600); }
 .feed-item--attendance_update { border-left-color: var(--green-600); }
 .feed-item--chat_activity { border-left-color: var(--blue-400); }
@@ -1469,6 +1481,18 @@ button {
 .feed-expanded-date {
   font-size: var(--text-xs);
   color: var(--steel-500);
+}
+
+.feed-item.feed-item--going {
+    border-left: 2px solid #2f9e66;
+}
+
+.feed-item.feed-item--maybe {
+    border-left: 2px solid #d99a00;
+}
+
+.feed-item.feed-item--out {
+    border-left: 2px solid #d64545;
 }
 
 /* ── Upcoming schedule preview ── */
