@@ -40,3 +40,14 @@ jobs:
 
           echo
           echo "Supabase keepalive succeeded."
+
+          CUTOFF=$(date -u -d '30 days ago' +"%Y-%m-%dT%H:%M:%SZ")
+
+          curl --fail-with-body --silent --show-error \
+            --request DELETE \
+            --header "apikey: $SUPABASE_ANON_KEY" \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            "$SUPABASE_URL/rest/v1/league_feed_events?event_type=eq.attendance_update&created_at=lt.$CUTOFF"
+
+          echo
+          echo "Old attendance feed events cleaned up."

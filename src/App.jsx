@@ -692,16 +692,32 @@ function App() {
         loadLeagueFeed(currentLeagueName);
     }, [currentLeagueName]);
 
-    useEffect(() => {
+    const upcomingGame = upcomingGames[nextGameIndex];
+    const rawMyTeam = teams.find((t) => t.name === "Red Bricks") ?? teams[0];
+
+    const myTeam = rawMyTeam
+      ? {
+            ...rawMyTeam,
+            roster: rawMyTeam.team_members ?? [],
+        }
+      : null;
+
+        useEffect(() => {
         if (!currentProfile) {
             return
         }
 
         async function loadUpcomingGames() {
 
+            if (!myTeam?.id) {
+                setUpcomingGames([]);
+                return;
+            }
+ 
             const { data, error } = await supabase
                 .from('games')
                 .select('*')
+                .or(`home_team_id.eq.${myTeam.id},away_team_id.eq.${myTeam.id}`)
                 .order('starts_at', { ascending: true });
 
             if (error) {
@@ -713,20 +729,13 @@ function App() {
         }
 
         loadUpcomingGames();
-    }, [currentProfile]);
+    }, [currentProfile, myTeam?.id]);
 
-    const upcomingGame = upcomingGames[nextGameIndex];
-    const rawMyTeam = teams.find((t) => t.name === "Red Bricks") ?? teams[0];
-
-    const myTeam = rawMyTeam
-      ? {
-            ...rawMyTeam,
-            roster: rawMyTeam.team_members ?? [],
-        }
-      : null;
 
     const currentUserId = currentProfile?.id ?? null;
 
+
+    // What did THIS USER answer?
     useEffect(() => {
         if (!upcomingGame?.id || !currentProfile?.id) {
             setUserRsvp("pending");
@@ -751,6 +760,54 @@ function App() {
 
             loadCurrentRsvp();
     }, [upcomingGame?.id, currentProfile?.id]);
+
+
+    // WHat did EVERYONE answer?
+    useEffect(() => {
+        if(!upcomingGame?.id) {
+            setTeamAttendance({
+                going: 0,
+                maybe: 0,
+                out: 0,
+                noResponse: 0,
+            });
+            return;
+        }
+
+        async function loadTeamAttendance() {
+            const { data, attendanceError } = await supabase
+                .from("game_rsvps")
+                .select("status")
+                .eq("game_id", upcomingGame.id);
+            
+            if (attendanceError) {
+                console.error("Unable to load team attendance:", attendanceError);
+                return;
+            }
+
+            const attendance = {
+                going: 0,
+                maybe: 0,
+                out: 0,
+                noResponse: 0,
+            };
+
+            for (const rsvp of data ?? []) {
+                if (rsvp.status == "going") {
+                    attendance.going += 1;
+                } else if (rsvp.status == "maybe") {
+                    attendance.maybe += 1;
+                } else if (rsvp.status == "out") {
+                    attendance.out += 1;
+                }
+            }
+
+            setTeamAttendance(attendance);
+        
+        }
+
+        loadTeamAttendance();
+    }, [upcomingGame?.id]);
 
     const gameContext = buildNextGameContext({
         game: upcomingGame,
@@ -1119,6 +1176,7 @@ function App() {
                 return (
                     <ScheduleView
                         teams={teams}
+                        myTeam={myTeam}
                         currentUserId={currentUserId}
                         currentTeamId={currentTeamId}
                         userRsvp={userRsvp}
@@ -1406,6 +1464,8 @@ function DashboardView({
     );
     const attendanceDetail = gameContext ? formatAttendanceDetail(gameContext) : "";
 
+    const [gameActionsOpen, setGameActionsOpen] = useState(false);
+
     return (
         <div className="page-view dashboard-view">
             <header className="page-header">
@@ -1439,15 +1499,48 @@ function DashboardView({
                                     Currently <strong className={`text-${userRsvp}`}>{rsvpLabel(userRsvp)}</strong>
                                 </p>
                                 <RsvpControls value={userRsvp} onChange={onRsvp} size="large" />
-                                <div className="action-stack">
+                                <div className="action-stack action-stack--mobile">
                                     <button type="button" className="action-btn action-btn--primary" onClick={onMessageTeam}>Message Team</button>
-                                    <button type="button" className="action-btn action-btn--outline" onClick={onRequestSub}>Request Sub</button>
-                                    {noResponse > 0 && (
-                                        <button type="button" className="action-btn action-btn--outline" onClick={onPromptNoResponse}>Prompt No Response</button>
-                                    )}
+                                    <div className="game-more-actions">
+                                        <button 
+                                            type="button" 
+                                            className="game-more-button" 
+                                            onClick={() => setGameActionsOpen((open) =>  !open)}
+                                            aria-label="More game actions"
+                                            aria-expanded={gameActionsOpen}
+                                        >
+                                             ⋮
+                                        </button>
+
+                                        {gameActionsOpen && (
+                                            <div className="game-actions-menu">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setGameActionsOpen(false);
+                                                        onRequestSub();
+                                                    }}
+                                                >
+                                                    Request Sub
+                                                </button>
+
+                                                {noResponse > 0 && (
+                                                    <button 
+                                                        type="button" 
+                                                        onClick={() => {
+                                                            setGameActionsOpen(false);
+                                                            onPromptNoResponse();
+                                                        }}
+                                                    >
+                                                        Prompt No Response
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        </div>    
                     </section>
                 ) : (
                     <section className="content-card"><p className="empty-state">No upcoming games.</p></section>
@@ -1548,16 +1641,21 @@ function formatGameTime(timeString) {
     });
 }
 
-function ScheduleView({ teams, currentUserId, currentTeamId, userRsvp, onRsvp, gameContext, onMessageTeam, onRequestSub }) {
+function ScheduleView({ teams, myTeam, currentUserId, currentTeamId, userRsvp, onRsvp, gameContext, onMessageTeam, onRequestSub }) {
     const [games, setGames] = useState([])
     const [detailGame, setDetailGame] = useState(null);
     const [rsvpGameId, setRsvpGameId] = useState(null);
 
     useEffect(() => {
+        if (!myTeam?.id) {
+            return;
+        }
+
         async function loadGames() {
             const { data, error } = await supabase
                 .from('games')
                 .select('*')
+                .or(`home_team_id.eq.${myTeam.id},away_team_id.eq.${myTeam.id}`)
                 .order('starts_at', { ascending: true });
 
             if (error) {
@@ -1569,7 +1667,7 @@ function ScheduleView({ teams, currentUserId, currentTeamId, userRsvp, onRsvp, g
         }
 
         loadGames();
-    }, []);
+    }, [myTeam?.id]);
 
     return (
         <div className="page-view schedule-view">
