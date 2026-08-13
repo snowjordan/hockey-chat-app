@@ -447,17 +447,18 @@ export default function ProfileEditor({ profile, onBack, onSaved }) {
             <label className="form-field">
               <span>Position</span>
 
-              <input
-                type="text"
-                value={form.position}
-                onChange={(event) =>
-                  updateField(
-                    'position',
-                    event.target.value
-                  )
-                }
-                placeholder="Forward, Defense, or Goalie"
-              />
+              <select
+                  value={form.position ?? ""}
+                  onChange={(event) =>
+                      updateField('position', event.target.value)
+                  }
+              >
+
+                  <option value="">Select position</option>
+                  <option value="forward">Forward</option>
+                  <option value="defense">Defense</option>
+                  <option value="goalie">Goalie</option>
+              </select>
             </label>
           </div>
         </section>

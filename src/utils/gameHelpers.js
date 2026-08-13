@@ -59,7 +59,7 @@ export function groupRosterByRsvp(players, userRsvp, currentUserId) {
 }
 
 export function countFieldSkaters(roster = []) {
-    return roster.filter((p) => !p.isGoalie).length;
+    return roster.filter((player) => player.position !== "goalie").length;
 }
 
 export function countNoResponse(roster, userRsvp, currentUserId) {

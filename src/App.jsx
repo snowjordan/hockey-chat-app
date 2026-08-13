@@ -1867,9 +1867,23 @@ function DashboardView({
 function TeamCard({ team, games, teams, onSelect, compact = false }) {
     const roster = team.team_members ?? [];
 
-    const forwards = roster.filter((member) => member.position === "Forward").length;
-    const defense = roster.filter((member) => member.position === "Defense").length;
-    const goalies = roster.filter((member) => member.position === "Goalie").length;
+    const forwards = roster.filter((member) =>
+        ["f", "forward"].includes(
+            member.position?.trim().toLowerCase()
+        )
+    ).length;
+
+    const defense = roster.filter((member) =>
+        ["d", "defense"].includes(
+            member.position?.trim().toLowerCase()
+        )
+    ).length;
+
+    const goalies = roster.filter((member) =>
+        ["g", "goalie", "goaltender"].includes(
+            member.position?.trim().toLowerCase()
+        )
+    ).length;
 
     return (
         <article className="team-card team-card--clickable">
@@ -2302,7 +2316,16 @@ function TeamDetail({ team, teams, games, currentUserId, league, userRsvp, onBac
                             <tr key={member.id} onClick={() => onSelectPlayer(member)}>
                                 <td className="roster-name">{member.profiles?.full_name ?? 'Unknown player'}</td>
                                 <td>{member.jersey_number}</td>
-                                <td>{member.position}</td>
+                                <td>
+                                    {{
+                                        forward: "Forward",
+                                        defense: "Defense",
+                                        goalie: "Goalie",
+                                        F: "Forward",
+                                        D: "Defense",
+                                        G: "Goalie",
+                                    }[member.position] ?? member.position}
+                                </td>
                             </tr>
                         ))}
                     </tbody>
