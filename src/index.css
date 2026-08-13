@@ -3152,6 +3152,14 @@ button {
         cursor: pointer;
     }
 
+    .desktop-next-game {
+        display: block;
+    }
+
+    .mobile-next-games {
+        display: none;
+    }
+
     .game-actions-menu button:hover {
         background: var(--ice-100);
     }
@@ -3363,6 +3371,8 @@ button {
     scroll-snap-type: x mandatory;
     gap: 12px;
     padding-bottom: 8px;
+    scrollbar-width: none;
+    padding-right: 12px;
 
     scrollbar-width: none;
   }
@@ -3371,9 +3381,19 @@ button {
     display: none;
   }
 
+  .desktop-next-game {
+        display: none;
+    }
+
+    .mobile-next-games {
+        display: block;
+    }
+
   .mobile-game-slide {
-    flex: 0 0 100%;
+    flex: 0 0 calc(100% - 14px);
+    min-width: calc(100% - 14px);
     scroll-snap-align: start;
+    scroll-snap-stop: always;
   }
 
 }

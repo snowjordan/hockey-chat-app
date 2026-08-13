@@ -292,6 +292,8 @@ function App() {
         out: 0,
         noResponse: 0,
     });
+    const [mobileRsvpsByGame, setMobileRsvpsByGame] = useState({});
+    const [mobileAttendanceByGame, setMobileAttendanceByGame] = useState({});
 
     const [chatMessages, setChatMessages] = useState({});
     const [chats, setChats] = useState([]);
@@ -889,8 +891,155 @@ function App() {
             relatedEntityType: "game",
             relatedEntityId: upcomingGame.id,
         });
-    }   
+    }
+    
+    useEffect(() => {
+        if (!currentProfile?.id || upcomingGames.length === 0) {
+            setMobileRsvpsByGame({});
+            setMobileAttendanceByGame({});
+            return;
+        }
 
+        async function loadMobileGameData() {
+            const gameIds = upcomingGames.map((game) => game.id);
+
+            const { data, error } = await supabase
+                .from("game_rsvps")
+                .select("game_id, profile_id, status")
+                .in("game_id", gameIds)
+            
+            if (error) {
+                console.error("Unable to load mobile game RSVPS:", error)
+                return;
+            }
+
+            const nextRsvpsByGame = {};
+            const nextAttendanceByGame = {};
+
+            for (const rsvp of data ?? []) {
+                const attedance = nextAttendanceByGame[rsvp.game_id];
+
+                if (!attedance) {
+                    continue;
+                }
+
+                if (rsvp.status == "going") {
+                    attendance.going += 1;
+                } else if (rsvp.status == "maybe") {
+                    attendance.maybe += 1;
+                } else if (rsvp.status == "out") {
+                    attendance.out += 1;
+                }
+
+                if (rsvp.profile_id === currentProfile.id) {
+                    nextRsvpsByGame[rsvp.game_id] =
+                        rsvp.status ?? "pending";
+                }
+            }
+
+            setMobileRsvpsByGame(nextRsvpsByGame);
+            setMobileAttendanceByGame(nextAttendanceByGame);
+        }
+
+        loadMobileGameData();
+    }, [upcomingGames, currentProfile?.id]);
+
+    const mobileGameContexts = upcomingGames
+        .map((game) => {
+            const attendance = 
+                mobileAttendanceByGame[game.id] ?? {
+                    going: 0,
+                    maybe: 0,
+                    out: 0,
+                    noResponse: 0,
+                };
+
+            const userRsvpForGame = mobileRsvpsByGame[game.id] ?? "pending"
+
+            const context = buildNextGameContext({
+                game,
+                myTeam,
+                teams,
+                attendance,
+                subRequested,
+                userRsvp: userRsvpForGame,
+                currentUserId
+            });
+
+            return {
+                game,
+                context,
+                userRsvp: userRsvpForGame,
+                attendance,
+            };
+        })
+        .filter((item) => item.context);
+    
+    async function onMobileRsvp(game, status) {
+        if (!currentProfile?.id || !game?.id) {
+            return;
+        }
+
+        const previousStatus = mobileRsvpsByGame[game.id] ?? "pending";
+
+        const { error } = await supabase
+        .from("game_rsvps")
+        .upsert(
+            {
+                game_id: game.id,
+                profile_id: currentProfile.id,
+                status,
+            },
+            {
+                onConflict: "game_id,profile_id",
+            }
+        );
+
+        if (error) {
+            console.error(
+                "Unable to save mobile RSVP:",
+                error
+            );
+            return;
+        }
+
+        setMobileRsvpsByGame((current) => ({
+            ...current,
+            [game.id]: status,
+        }));
+
+        setMobileAttendanceByGame((current) => {
+            const currentAttendance =
+                current[game.id] ?? {
+                    going: 0,
+                    maybe: 0,
+                    out: 0,
+                    noResponse: 0,
+                };
+            
+            const nextAttendance = {
+                ...currentAttendance,
+            };
+
+            if (
+                previousStatus &&
+                previousStatus !== "pending"
+            ) {
+                nextAttendance[previousStatus] = Math.max(
+                    0,
+                    (nextAttendance[previousStatus] ?? 0) - 1
+                );
+            }
+
+            nextAttendance[status] = (nextAttendance[status] ?? 0) + 1;
+
+            return {
+                ...current,
+                [game.id]: nextAttendance,
+            };
+        });
+    }
+    
     const navigateTo = (view) => {
         setActiveView(view)
         setEditingPlayer(false)
@@ -1169,6 +1318,8 @@ function App() {
                         onToggleFeed={setExpandedFeedId}
                         teams={teams}
                         games={upcomingGames}
+                        mobileGameContexts={mobileGameContexts}
+                        onMobileRsvp={onMobileRsvp}
                     />
                 )
 
@@ -1455,6 +1606,8 @@ function DashboardView({
     onToggleFeed,
     teams,
     games,
+    mobileGameContexts,
+    onMobileRsvp,
 }) {
     const subStatus = formatSubStatus(myTeam?.substituteStatus, subRequested);
     const noResponse = countNoResponse(
@@ -1473,6 +1626,7 @@ function DashboardView({
             </header>
 
             <div className="dashboard-grid">
+                <div className="desktop-next-game">
                 {gameContext ? (
                     <section className="content-card next-game-card content-card--hero">
                         <header className="content-card-header"><h2>Next Game</h2></header>
@@ -1545,6 +1699,127 @@ function DashboardView({
                 ) : (
                     <section className="content-card"><p className="empty-state">No upcoming games.</p></section>
                 )}
+                </div>
+
+                <div className="mobile-next-games">
+                    {mobileGameContexts.length > 0 ? (
+                        <div className="mobile-game-carousel">
+                            {mobileGameContexts.map(
+                                ({ game, context, userRsvp: mobileUserRsvp }) => (
+                                    <section
+                                        key={game.id}
+                                        className="content-card next-game-card content-card--hero mobile-game-slide"
+                                    >
+                                    <header className="content-card-header">
+                                        <h2>Next Game</h2>
+                                    </header>
+
+                                    <div className="next-game-columns">
+                                        <div className="next-game-col next-game-col--info">
+                                            <div className="next-game-matchup">
+                                                {context.matchup}
+                                            </div>
+
+                                            <p className="next-game-when">
+                                                {context.date} · {context.time} · {context.rink}
+                                            </p>
+                                        </div>
+
+                                        <div className="next-game-col next-game-col--attendance">
+                                            <span className="attendance-hero-number">
+                                                {context.skatersGoing} skaters
+                                            </span>
+
+                                            <p className="attendance-status-line">
+                                                {context.goalieStatus}
+                                            </p>
+                                        </div>
+
+                                        <div className="next-game-col next-game-col--actions">
+                                            <span className="col-label">
+                                                Your Status
+                                            </span>
+
+                                            <p className="your-status">
+                                                Currently{" "}
+                                                <strong className={`text-${mobileUserRsvp}`}>
+                                                    {rsvpLabel(mobileUserRsvp)}
+                                                </strong>
+                                            </p>
+
+                                            <RsvpControls
+                                                value={mobileUserRsvp}
+                                                onChange={(status) =>
+                                                    onMobileRsvp(game, status)
+                                                }
+                                                size="large"
+                                            />
+
+                                            <div className="action-stack action-stack--mobile">
+                                                <button
+                                                    type="button"
+                                                    className="action-btn action-btn--primary"
+                                                    onClick={onMessageTeam}
+                                                >
+                                                    Message Team
+                                                </button>
+
+                                                <div className="game-more-actions">
+                                                    <button
+                                                        type="button"
+                                                        className="game-more-button"
+                                                        onClick={() =>
+                                                            setGameActionsOpen(
+                                                                (open) => !open
+                                                            )
+                                                        }
+                                                        aria-label="More game actions"
+                                                        aria-expanded={gameActionsOpen}
+                                                    >
+                                                        ⋮
+                                                    </button>
+
+                                                    {gameActionsOpen && (
+                                                        <div className="game-actions-menu">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setGameActionsOpen(false);
+                                                                    onRequestSub();
+                                                                }}
+                                                            >
+                                                                Request Sub
+                                                            </button>
+
+                                                            {context.noResponse > 0 && (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setGameActionsOpen(false);
+                                                                        onPromptNoResponse();
+                                                                    }}
+                                                                >
+                                                                    Prompt No Response
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </section>
+                            )
+                        )}
+                    </div>
+                ) : (
+                    <section className="content-card">
+                        <p className="empty-state">
+                            No upcoming games.
+                        </p>
+                    </section>
+                )}
+            </div>
 
                 <LeagueFeed
                     items={feedItems}
