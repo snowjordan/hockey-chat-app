@@ -906,7 +906,7 @@ function App() {
             const { data, error } = await supabase
                 .from("game_rsvps")
                 .select("game_id, profile_id, status")
-                .in("game_id", gameIds)
+                .in("game_id", gameIds);
             
             if (error) {
                 console.error("Unable to load mobile game RSVPS:", error)
@@ -915,11 +915,24 @@ function App() {
 
             const nextRsvpsByGame = {};
             const nextAttendanceByGame = {};
+            
+            // Create an empty bucket for every game first
+            for (const game of upcomingGames) {
+                nextRsvpsByGame[game.id] = "pending";
 
+                nextAttendanceByGame[game.id] = {
+                    going: 0,
+                    maybe: 0,
+                    out: 0,
+                    noResponse: 0,
+                };
+            }
+
+            // Now fill those buckets from Supabase
             for (const rsvp of data ?? []) {
-                const attedance = nextAttendanceByGame[rsvp.game_id];
+                const attendance = nextAttendanceByGame[rsvp.game_id];
 
-                if (!attedance) {
+                if (!attendance) {
                     continue;
                 }
 
