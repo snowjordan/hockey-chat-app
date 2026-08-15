@@ -178,6 +178,7 @@ export default function SetPassword({ onComplete }) {
 
                     <button
                         type="email-sign-in-button"
+                        className='primary-button'
                         disabled={isSubmitting}
                     >
                         {isSubmitting

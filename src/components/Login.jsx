@@ -74,14 +74,18 @@ export default function Login({ accessDenied = false }) {
 
     setSigningIn(true)
 
+    const redirectTo = 
+      window.location.hostname === "localhost"
+        ? `${window.location.origin}/?page=set-password`
+        : "https://ceoleague.co/?page=set-password";
+
     const { error } =
       await supabase.functions.invoke(
         'rapid-worker',
         {
           body: {
             email: trimmedEmail,
-            redirectTo:
-              `${window.location.origin}/?page=set-password`,
+            redirectTo,
           },
         }
       )
