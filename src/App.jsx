@@ -1021,6 +1021,11 @@ function App() {
             [game.id]: status,
         }));
 
+        // Keep the desktop Next Game RSVP in sync with schedule changes
+        if (game.id === upcomingGame?.id) {
+            setUserRsvp(status);
+        }
+
         setMobileAttendanceByGame((current) => {
             const currentAttendance =
                 current[game.id] ?? {
@@ -1353,6 +1358,10 @@ function App() {
                             setSubRequested(true)
                             openChat(getChatPrefill("sub", gameContext))
                         }}
+                        mobileGameContexts={mobileGameContexts}
+                        onMobileRsvp={onMobileRsvp}
+                        mobileRsvpsByGame={mobileRsvpsByGame}
+                        mobileAttendanceByGame={mobileAttendanceByGame}
                     />                  
                 )
 
@@ -1503,12 +1512,11 @@ function App() {
                             type="button"
                             className="next-game-arrow"
                             onClick={() => {
-                                console.log('prev clicked');
                                 setNextGameIndex((index) =>
-                                    index === 0 ? upcomingGames.length - 1 : index - 1
+                                    index === 0 ? 0 : index - 1
                                 );
                             }}
-                            disabled={upcomingGames.length <= 1}
+                            disabled={upcomingGames.length <= 1 || nextGameIndex === 0}
                         >
                             ‹
                         </button>
@@ -1525,7 +1533,6 @@ function App() {
                             type="button"
                             className="next-game-arrow"
                             onClick={() => {
-                                console.log('next clicked'); 
                                 setNextGameIndex((index) =>
                                     index === upcomingGames.length - 1 ? 0 : index + 1
                                 )
@@ -1943,10 +1950,54 @@ function formatGameTime(timeString) {
     });
 }
 
-function ScheduleView({ teams, myTeam, currentUserId, currentTeamId, userRsvp, onRsvp, gameContext, onMessageTeam, onRequestSub }) {
+function ScheduleView({ teams, myTeam, currentUserId, currentTeamId, userRsvp, onRsvp, gameContext, onMessageTeam, onRequestSub, mobileGameContexts = [], onMobileRsvp, mobileRsvpsByGame, mobileAttendanceByGame }) {
     const [games, setGames] = useState([])
     const [detailGame, setDetailGame] = useState(null);
     const [rsvpGameId, setRsvpGameId] = useState(null);
+    const [calendarDate, setCalendarDate] = useState(new Date());
+
+    const year = calendarDate.getFullYear();
+    const month = calendarDate.getMonth();
+
+    function formatDateKey(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+
+        return `${year}-${month}-${day}`;
+    }
+
+    function formatDateKey(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+
+        return `${year}-${month}-${day}`;
+    }
+
+    function goToPreviousMonth() {
+        setCalendarDate((current) =>
+            new Date(
+                current.getFullYear(),
+                current.getMonth() - 1,
+                1
+            )
+        );
+    }
+
+    function goToNextMonth() {
+        setCalendarDate((current) =>
+            new Date(
+                current.getFullYear(),
+                current.getMonth() + 1,
+                1
+            )
+        );
+    }
+
+    function goToCurrentMonth() {
+        setCalendarDate(new Date());
+    }
 
     useEffect(() => {
         if (!myTeam?.id) {
@@ -1971,58 +2022,387 @@ function ScheduleView({ teams, myTeam, currentUserId, currentTeamId, userRsvp, o
         loadGames();
     }, [myTeam?.id]);
 
+    // Desktop version of Schedule - Calendar
+
+    const firstDayOfMonth = new Date(year, month, 1);
+    const lastDayOfMonth = new Date(year, month + 1, 0);
+
+    const calendarStart = new Date(firstDayOfMonth);
+    calendarStart.setDate(
+        firstDayOfMonth.getDate() - firstDayOfMonth.getDay()
+    );
+
+    const calendarEnd = new Date(lastDayOfMonth);
+    calendarEnd.setDate(
+        lastDayOfMonth.getDate() + (6 - lastDayOfMonth.getDay())
+    );
+
+    const calendarDays = []
+
+    const cursor = new Date(calendarStart);
+
+    while (cursor <= calendarEnd) {
+        calendarDays.push(new Date(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+    }
+
+    // Mobile schedule: only show games in the currently selected calendar month
+    const mobileMonthGames = games.filter((game) => {
+        const gameDate = new Date(`${game.game_date}T00:00:00`);
+
+        return (
+            gameDate.getFullYear() === year && 
+            gameDate.getMonth() === month
+        );
+    });
+
+
+
     return (
         <div className="page-view schedule-view">
             <header className="page-header">
                 <h2>Schedule</h2>
                 <p className="page-subtitle">{games.length} games · South Suburban Sports Complex</p>
             </header>
+            <div className="desktop-schedule">
+            <section className="content-card schedule-calendar">
+                <div className="schedule-calendar-toolbar">
+                    <h3>
+                        {calendarDate.toLocaleDateString("en-US", {
+                            month: "long",
+                            year: "numeric",
+                        })}
+                    </h3>
 
-            <section className="content-card schedule-table">
-                <div className="schedule-table-head">
-                    <span>Date</span><span>Time</span><span>Matchup</span><span>Rink</span>
-                    <span>RSVP</span><span>Status</span><span></span>
+                <div className="schedule-calendar-actions">
+                    <button
+                        type="button"
+                        className="action-btn action-btn--secondary"
+                        onClick={goToPreviousMonth}
+                    >
+                        ←
+                    </button>
+
+                    <button
+                        type="button"
+                        className="action-btn action-btn--secondary"
+                        onClick={goToCurrentMonth}
+                    >
+                        Today
+                    </button>
+
+                    <button
+                        type="button"
+                        className="action-btn action-btn--secondary"
+                        onClick={goToNextMonth}
+                    >
+                        →
+                    </button>
                 </div>
-                {games.map((game) => {
-                    const home = game.home_team_name;
-                    const away = game.away_team_name;
-                    const going = 0;
-                    const maybe = 0;
-                    const out = 0;
-                    const showRsvp = rsvpGameId === game.id;
+            </div>
+
+            <div className="schedule-calendar-weekdays">
+                {[
+                    "Sun",
+                    "Mon",
+                    "Tue",
+                    "Wed",
+                    "Thu",
+                    "Fri",
+                    "Sat",
+                ].map((day) => (
+                    <div key={day}>{day}</div>
+                ))}
+            </div>
+
+            <div className="schedule-calendar-grid">
+                {calendarDays.map((day) => {
+                    const dateKey = formatDateKey(day);
+
+                    const dayGames = games.filter(
+                        (game) => game.game_date === dateKey
+                    );
+
+                    const isCurrentMonth = day.getMonth() === month;
+
+                    const isToday = formatDateKey(day) === formatDateKey(new Date());
 
                     return (
-                        <div key={game.id}>
-                            <div className="schedule-table-row">
-                                <span className="schedule-date">{formatGameDate(game.game_date)}</span>
-                                <span className="schedule-time">{formatGameTime(game.start_time)}</span>
-                                <span className="schedule-teams">{home} vs {away}</span>
-                                <span className="schedule-rink">
-                                    {game.location_name}{game.rink ? ` · ${game.rink}` : ''}
-                                </span>
-                                <span className="schedule-rsvp">{going}G · {maybe}M · {out}O</span>
-                                <span className="schedule-status">
-                                    <span className="status-tag status-tag--ok">Scheduled</span>
-                                    {game.substituteStatus !== "None" && game.substituteStatus !== "No subs needed" && (
-                                        <span className="status-tag status-tag--warn">{game.substituteStatus}</span>
-                                    )}
-                                </span>
-                                <span className="schedule-actions">
-                                    <button type="button" className="action-btn action-btn--secondary action-btn--schedule" onClick={() => setDetailGame(game)}>Details</button>
-                                    <button type="button" className="action-btn action-btn--secondary action-btn--schedule" onClick={() => setRsvpGameId(showRsvp ? null : game.id)}>RSVP</button>
-                                </span>
+                        <div
+                            key={dateKey}
+                            className={[
+                                "schedule-calendar-day",
+                                !isCurrentMonth
+                                    ? "is-outside-month"
+                                    : "",
+                                isToday ? "is-today" : "",
+                            ]
+                                .filter(Boolean)
+                                .join(" ")}
+                        >
+                            <div className="schedule-calendar-date">
+                                {day.getDate()}
                             </div>
-                            {showRsvp && (
-                                <div className="schedule-rsvp-panel">
-                                    <span className="col-label">Your RSVP for {formatGameDate(game.game_date)}</span>
-                                    <RsvpControls value={userRsvp} onChange={onRsvp} />
-                                    <p className="card-note">You are marked: <strong className={`text-${userRsvp}`}>{rsvpLabel(userRsvp)}</strong></p>
+
+                            <div className="schedule-calendar-games">
+                                {dayGames.map((game) => {
+                                    // Get the current user's RSVP for this game
+                                    const gameRsvp =
+                                        mobileRsvpsByGame[game.id] ?? "pending";
+
+                                    // Get the current attendance counts for this game
+                                    const attendance =
+                                        mobileAttendanceByGame[game.id] ?? {
+                                            going: 0,
+                                            maybe: 0,
+                                            out: 0,
+                                            noResponse: 0,
+                                        };
+
+
+                                    const going = attendance.going;
+                                    const maybe = attendance.maybe;
+                                    const out = attendance.out;
+
+                                    const showRsvp = rsvpGameId === game.id;
+
+                                    return (
+                                    <div
+                                        key={game.id}
+                                        className="schedule-calendar-game"
+                                    >
+                                        <button
+                                            type="button"
+                                            className="schedule-calendar-game-main"
+                                            onClick={() =>
+                                                setDetailGame(game)
+                                            }
+                                        >
+                                            <span className="schedule-calendar-game-time">
+                                                {formatGameTime(
+                                                    game.start_time
+                                                )}
+                                            </span>
+
+                                            <span className="schedule-calendar-game-teams">
+                                                {
+                                                    game.home_team_name
+                                                }{" "}
+                                                vs{" "}
+                                                {
+                                                    game.away_team_name
+                                                }
+                                            </span>
+
+                                            <span className="schedule-calendar-game-rink">
+                                                {
+                                                    game.location_name
+                                                }
+                                                {game.rink
+                                                    ? ` · ${game.rink}`
+                                                    : ""}
+                                            </span>
+
+                                            <span
+                                                className={`schedule-calendar-rsvp text-${gameRsvp}`}
+                                            >
+                                                {rsvpLabel(gameRsvp)}
+                                            </span>
+                                        </button>
+
+                                        <div className="schedule-calendar-rsvp-wrap">
+                                            <button
+                                            type="button"
+                                            className="schedule-calendar-rsvp-button"
+                                            onClick={() =>
+                                                setRsvpGameId(
+                                                    showRsvp ? null : game.id
+                                                )
+                                            }
+                                        >
+                                            RSVP
+                                            </button>
+
+                                            {showRsvp && (
+                                                <div className="schedule-calendar-rsvp-popover">
+                                                    <span className="col-label">
+                                                        Your RSVP
+                                                    </span>
+
+                                            <RsvpControls
+                                                value={gameRsvp}
+                                                onChange={(status) => {
+                                                    onMobileRsvp(game, status);
+                                                    setRsvpGameId(null);
+                                                }}
+                                            />
+
+                                            <span className="schedule-calendar-attendance">
+                                                {attendance.going}G ·{" "}
+                                                {attendance.maybe}M ·{" "}
+                                                {attendance.out}O
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
+                                </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    </section>
+    </div>
+    
+    {/* Mobile schedule: compact chronological agenda list */}
+    <div className="mobile-schedule">
+    <section className="content-card mobile-schedule-list">
+        <div className="mobile-schedule-games">
+            {games.length > 0 ? (
+                games.map((game, index) => {
+                    // Get the current user's RSVP for this game
+                    const gameRsvp =
+                        mobileRsvpsByGame[game.id] ?? "pending";
+
+                    // Get the current attendance counts for this game
+                    const attendance =
+                        mobileAttendanceByGame[game.id] ?? {
+                            going: 0,
+                            maybe: 0,
+                            out: 0,
+                            noResponse: 0,
+                        };
+                
+                    const showRsvp = rsvpGameId === game.id;
+
+                    const gameDate = new Date(`${game.game_date}T00:00:00`);
+
+                    // Compare this game to the previous  one so we know
+                    // when to display a new month heading
+                    const previousGame = index > 0 ? games[index - 1] : null;
+
+                    const previousGameDate = previousGame
+                        ? new Date(`${previousGame.game_date}T00:00:00`) : null;
+                    const showMonthHeading = 
+                        !previousGameDate || 
+                        previousGameDate.getMonth() !== 
+                            gameDate.getMonth() ||
+                        previousGameDate.getFullYear() !==
+                            gameDate.getFullYear();
+                    
+                    return (
+                        <div key={game.id}>
+                            {showMonthHeading && (
+                                <h3 className="mobile-schedule-month">
+                                    {gameDate.toLocaleDateString(
+                                        "en-US",
+                                        {
+                                            month: "long",
+                                            year: "numeric",
+                                        }
+                                    )}
+                                </h3>
                             )}
+
+                            <div className="mobile-schedule-game">
+                                {/* Game date */}
+                                <div className="mobile-schedule-date">
+                                    <span className="mobile-schedule-date-number">
+                                        {gameDate.getDate()}
+                                    </span>
+
+                                    <span className="mobile-schedule-date-day">
+                                        {gameDate.toLocaleDateString(
+                                            "en-US",
+                                            {
+                                                weekday: "short",
+                                            }
+                                        )}
+                                    </span>
+                                </div>
+
+                                {/* Game information */}
+                                <button
+                                    type="button"
+                                    className="mobile-schedule-game-main"
+                                    onClick={() => setDetailGame(game)}
+                                >
+                                    <span className="mobile-schedule-game-time">
+                                        {formatGameTime(game.start_time)}
+                                    </span>
+
+                                    <span className="mobile-schedule-game-matchup">
+                                        {game.home_team_name} vs {" "}
+                                        {game.away_team_name}
+                                    </span>
+
+                                    <span className="mobile-schedule-game-rink">
+                                        {game.location_name}
+                                        {game.rink ? ` · ${game.rink}` : ""}
+                                    </span> 
+                                </button>
+
+                                {/* RSVP status */}
+                                <div className="mobile-schedule-rsvp">
+                                    <button
+                                        type="button"
+                                        className={`mobile-schedule-rsvp-status mobile-schedule-rsvp-status--${gameRsvp}`}
+                                        onClick={() =>
+                                            setRsvpGameId(
+                                                showRsvp
+                                                    ? null
+                                                    : game.id
+                                            )
+                                         }
+                                         aria-label={`RSVP: ${rsvpLabel(gameRsvp)}`}
+                                    >
+                                        {gameRsvp === "going" && "✓"}
+                                        {gameRsvp === "maybe" && "?"}
+                                        {gameRsvp === "out" && "×"}
+                                        {gameRsvp === "pending" && "?"}
+                                    </button>
+
+                                    {showRsvp && (
+                                        <div className="mobile-schedule-rsvp-popover">
+                                            <span className="col-label">
+                                                Your RSVP
+                                            </span>
+
+                                            <RsvpControls
+                                                value={gameRsvp}
+                                                onChange={(status) => {
+                                                    onMobileRsvp(
+                                                        game,
+                                                        status
+                                                    );
+                                                    setRsvpGameId(
+                                                        null
+                                                    );
+                                                }}
+                                            />
+
+                                            <span className="schedule-calendar-attendance">
+                                                {attendance.going}G ·{" "}
+                                                {attendance.maybe}M ·{" "}
+                                                {attendance.out}O
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     );
-                })}
-            </section>
+                })
+            ) : (
+                <p className="empty-state">
+                    No upcoming games.
+                </p>
+            )}
+        </div>
+    </section>
+    </div>
 
             {detailGame && (
                 <GameDetailModal

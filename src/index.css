@@ -1545,6 +1545,155 @@ button {
   padding: 12px 14px;
 }
 
+
+/* ── Calendar ── */
+
+.schedule-calendar {
+  overflow: visible;
+}
+
+.schedule-calendar-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.schedule-calendar-toolbar h3 {
+  margin: 0;
+}
+
+.schedule-calendar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.schedule-calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.schedule-calendar-weekdays > div {
+  padding: 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.schedule-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.schedule-calendar-day {
+  min-height: 150px;
+  padding: 8px;
+  border-right: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.schedule-calendar-day:nth-child(7n) {
+  border-right: none;
+}
+
+.schedule-calendar-day.is-outside-month
+.schedule-calendar-date {
+  opacity: 0.45;
+}
+
+.schedule-calendar-day.is-today
+  .schedule-calendar-date {
+  font-weight: 800;
+}
+
+.schedule-calendar-date {
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+}
+
+.schedule-calendar-games {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.schedule-calendar-game {
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: visible;
+}
+
+.schedule-calendar-game-main {
+  width: 100%;
+  padding: 8px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.schedule-calendar-game-time {
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.schedule-calendar-game-teams {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.schedule-calendar-game-rink,
+.schedule-calendar-rsvp {
+  font-size: 0.72rem;
+}
+
+.schedule-calendar-rsvp-wrap {
+  position: relative;
+}
+
+.schedule-calendar-rsvp-button {
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-top: 1px solid var(--border-color);
+  background: transparent;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.schedule-calendar-rsvp-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+
+  min-width: 220px;
+  padding: 12px;
+
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.schedule-calendar-rsvp-popover .rsvp-controls {
+  margin-top: 8px;
+}
+
+.schedule-calendar-attendance {
+  display: block;
+  margin-top: 8px;
+  font-size: 0.75rem;
+}
+
+
 /* ── Team cards ── */
 
 .teams-grid {
@@ -1758,6 +1907,14 @@ button {
   min-width: 68px;
   padding: 6px 12px;
   text-align: center;
+}
+
+.desktop-schedule {
+  display: block;
+}
+
+.mobile-schedule {
+  display: none;
 }
 
 /* ── Roster table ── */
@@ -2498,6 +2655,14 @@ button {
   color: var(--white);
   font-size: 1.75rem;
   line-height: 1;
+}
+
+.mobile-schedule-month {
+  margin: 0;
+  padding: 12px 16px 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .mobile-nav-close:hover,
@@ -3277,6 +3442,181 @@ button {
   .schedule-table-head {
     display: none;
   }
+
+  .desktop-schedule {
+    display: none;
+  }
+
+  .mobile-schedule {
+    display: block;
+  }
+
+  /* MOBILE SCHEDULE */
+
+.mobile-schedule-list {
+  padding: 0;
+  overflow: visible;
+}
+
+.mobile-schedule-games {
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-schedule-month {
+  margin: 0;
+  padding: 18px 18px 10px;
+  font-size: 1rem;
+  font-weight: 700;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.mobile-schedule-game {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 12px;
+
+  padding: 14px 16px;
+
+  border-bottom: 1px solid var(--border-color);
+}
+
+.mobile-schedule-game:last-child {
+  border-bottom: 0;
+}
+
+/* DATE */
+
+.mobile-schedule-date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  min-height: 48px;
+}
+
+.mobile-schedule-date-number {
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.mobile-schedule-date-day {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  opacity: 0.65;
+}
+
+/* GAME INFO */
+
+.mobile-schedule-game-main {
+  min-width: 0;
+
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+
+  padding: 0;
+  border: 0;
+  background: transparent;
+
+  text-align: left;
+  cursor: pointer;
+}
+
+.mobile-schedule-game-time {
+  font-size: 0.78rem;
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+.mobile-schedule-game-matchup {
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.mobile-schedule-game-rink {
+  font-size: 0.78rem;
+  line-height: 1.25;
+  opacity: 0.7;
+}
+
+/* RSVP STATUS */
+
+.mobile-schedule-rsvp {
+  position: relative;
+
+  display: flex;
+  justify-content: center;
+}
+
+.mobile-schedule-rsvp-status {
+  width: 30px;
+  height: 30px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 0;
+
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+
+  background: white;
+
+  font-size: 0.95rem;
+  font-weight: 800;
+
+  cursor: pointer;
+}
+
+.mobile-schedule-rsvp-status--going {
+  border-color: #198754;
+  color: #198754;
+}
+
+.mobile-schedule-rsvp-status--maybe {
+  border-color: #d98a00;
+  color: #d98a00;
+}
+
+.mobile-schedule-rsvp-status--out {
+  border-color: #c0392b;
+  color: #c0392b;
+}
+
+.mobile-schedule-rsvp-status--pending {
+  border-color: #64748b;
+  color: #64748b;
+}
+
+/* RSVP POPOVER */
+
+.mobile-schedule-rsvp-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+
+  min-width: 220px;
+  padding: 12px;
+
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.mobile-schedule-rsvp-popover .rsvp-controls {
+  margin-top: 8px;
+}
 
   .team-sponsor-banner,
   .sponsor-image-preview {
