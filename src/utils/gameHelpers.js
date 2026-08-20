@@ -175,7 +175,7 @@ export function formatAttendanceDetail(ctx) {
     const parts = [];
     if (ctx.maybe > 0) parts.push(`${ctx.maybe} maybe`);
     if (ctx.out > 0) parts.push(`${ctx.out} out`);
-    if (ctx.noResponse > 0) parts.push(`${ctx.noResponse} no response`);
+    if (ctx.noResponse > 0) parts.push(`${ctx.noResponse} No responses`);
     return parts.join(" · ");
 }
 

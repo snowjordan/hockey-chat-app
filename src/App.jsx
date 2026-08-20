@@ -5,12 +5,7 @@ import { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 import HockeyIcon from "./components/HockeyIcon.jsx";
 import {
     FEED_TYPE_LABELS,
-    getTeamName,
-    getTeamNextGame,
-    getOpponentName,
-    formatNextGameShort,
     resolveRsvp,
-    groupRosterByRsvp,
     countFieldSkaters,
     countNoResponse,
     rsvpLabel,
@@ -20,6 +15,16 @@ import {
     formatAttendanceDetail,
     getChatPrefill,
 } from "./utils/gameHelpers.js";
+import {
+    applyRsvpAttendanceChange,
+    canRsvpToGame,
+    filterGamesForTeam,
+    findTeamForProfile,
+    formatDateKey,
+    formatGameDate,
+    formatGameTime,
+    isValidRsvpStatus,
+} from "./utils/scheduleHelpers.js";
 import Directory from './components/Directory';
 import ProfileEditor from './components/ProfileEditor';
 import Login from './components/Login';
@@ -153,14 +158,7 @@ function LeagueFeed({ items, limit, expandedId, onToggle, title = "League Feed" 
     );
 }
 
-function TonightsRoster({ game, teams = [], userRsvp, currentUserId, onPromptPlayers }) {
-    const myTeam =
-        teams.find((team) =>
-            (team.team_members ?? []).some((member) =>
-                member.profile_id === currentUserId ||
-                member.profiles?.id === currentUserId
-            )
-        ) ?? null
+function TonightsRoster({ game, myTeam, rsvpsByProfile = {}, onPromptPlayers }) {
 
     const players =
         myTeam?.team_members ??
@@ -202,30 +200,11 @@ function TonightsRoster({ game, teams = [], userRsvp, currentUserId, onPromptPla
         <aside className="right-rail">
             <h3 className="rail-heading">Tonight&apos;s Roster</h3>
 
-            <ul className="rail-roster-list">
-                {players.map((player) => {
-                    const playerName =
-                        player.profiles?.full_name ??
-                        player.name ??
-                        "Unknown player"
-
-                    const status = resolveRsvp(
-                        player,
-                        userRsvp,
-                        currentUserId
-                    )
-
-                    return (
-                        <li
-                            key={player.id ?? playerName}
-                            className="rail-roster-item"
-                        >
-                            <span>{playerName}</span>
-                            <span>{rsvpLabel(status)}</span>
-                        </li>
-                    )
-                })}
-            </ul>
+            <GameRosterList
+                players={players}
+                rsvpsByProfile={rsvpsByProfile}
+                variant="desktop"
+            />
 
             {onPromptPlayers && (
                 <button
@@ -240,7 +219,13 @@ function TonightsRoster({ game, teams = [], userRsvp, currentUserId, onPromptPla
     )
 }
 
-function GameDetailModal({ game, onClose, onMessageTeam, onRequestSub }) {
+function GameDetailModal({
+    game,
+    attendance,
+    onClose,
+    onMessageTeam,
+    onRequestSub,
+}) {
     const home = game.home_team_name ?? 'TBD';
     const away = game.away_team_name ?? 'TBD';
     const date = formatGameDate(game.game_date);
@@ -248,6 +233,7 @@ function GameDetailModal({ game, onClose, onMessageTeam, onRequestSub }) {
     const endTime = formatGameTime(game.end_time);
     const time = `${startTime} – ${endTime}`;
     const rink = `${game.location_name ?? 'TBD'}${game.rink ? ` · ${game.rink}` : ''}`;
+    const { going = 0, maybe = 0, out = 0 } = attendance ?? {};
 
     return (
         <div className="modal-backdrop">
@@ -261,7 +247,12 @@ function GameDetailModal({ game, onClose, onMessageTeam, onRequestSub }) {
                     <div><span>Date</span><strong>{date}</strong></div>
                     <div><span>Time</span><strong>{time}</strong></div>
                     <div><span>Rink</span><strong>{rink}</strong></div>
-                    <div><span>Attendance</span><strong>0 going · 0 maybe · 0 out</strong></div>
+                    <div>
+                        <span>Attendance</span>
+                        <strong>
+                            {going} going · {maybe} maybe · {out} out
+                        </strong>
+                    </div>
                     <div><span>Goalie</span><strong>Scheduled</strong></div>
                     <div><span>Subs</span><strong>No subs needed</strong></div>
                 </div>
@@ -292,8 +283,10 @@ function App() {
         out: 0,
         noResponse: 0,
     });
+    const [rsvpsByProfile, setRsvpsByProfile] = useState({})
     const [mobileRsvpsByGame, setMobileRsvpsByGame] = useState({});
     const [mobileAttendanceByGame, setMobileAttendanceByGame] = useState({});
+    const [mobileRsvpsByProfileByGame, setMobileRsvpsByProfileByGame] = useState({})
 
     const [chatMessages, setChatMessages] = useState({});
     const [chats, setChats] = useState([]);
@@ -335,12 +328,19 @@ function App() {
 
     const isSetPasswordPage = window.location.pathname === "/set-password" || searchParams.get("page") === "set-password"
 
-    const currentTeamId =
-        teams.find((team) =>
-            team.team_members?.some(
-                (member) => member.profile_id === currentProfile?.id
-            )
-        )?.id ?? null
+    const rawMyTeam = findTeamForProfile(
+        teams,
+        currentProfile?.id
+    );
+
+    const currentTeamId = rawMyTeam?.id ?? null;
+
+    const myTeam = rawMyTeam
+        ? {
+              ...rawMyTeam,
+              roster: rawMyTeam.team_members ?? [],
+          }
+        : null;
 
     useEffect(() => {
         let isMounted = true
@@ -389,10 +389,6 @@ function App() {
             // A profile may exist for this email but not yet be linked
             // to the newly authenticated Supabase user.
             if (!profile) {
-                console.log(
-                    "No linked profile found. Attempting automatic profile connection."
-                )
-
                 const {
                     data: linkResult,
                     error: linkError,
@@ -417,11 +413,6 @@ function App() {
                     setAuthLoading(false)
                     return
                 }
-
-                console.log(
-                    "Profile connection result:",
-                    linkResult
-                )
 
                 const linkSucceeded =
                     linkResult?.status === "linked" ||
@@ -671,10 +662,6 @@ function App() {
                 return
             }
 
-            const varsityInn = data?.find(
-                (team) => team.name === 'Varsity Inn'
-            )
-
             setTeams(data ?? [])
         }
 
@@ -695,27 +682,15 @@ function App() {
     }, [currentLeagueName]);
 
     const upcomingGame = upcomingGames[nextGameIndex];
-    const rawMyTeam = teams.find((t) => t.name === "Red Bricks") ?? teams[0];
 
-    const myTeam = rawMyTeam
-      ? {
-            ...rawMyTeam,
-            roster: rawMyTeam.team_members ?? [],
-        }
-      : null;
-
-        useEffect(() => {
-        if (!currentProfile) {
-            return
+    useEffect(() => {
+        if (!currentProfile?.id || !myTeam?.id) {
+            setUpcomingGames([]);
+            setNextGameIndex(0);
+            return;
         }
 
         async function loadUpcomingGames() {
-
-            if (!myTeam?.id) {
-                setUpcomingGames([]);
-                return;
-            }
- 
             const { data, error } = await supabase
                 .from('games')
                 .select('*')
@@ -727,11 +702,16 @@ function App() {
                 return;
             }
 
-            setUpcomingGames(data ?? []);
+            // Fail closed even if a future query change accidentally returns
+            // a game outside this player's team.
+            setUpcomingGames(
+                filterGamesForTeam(data ?? [], myTeam.id)
+            );
+            setNextGameIndex(0);
         }
 
         loadUpcomingGames();
-    }, [currentProfile, myTeam?.id]);
+    }, [currentProfile?.id, myTeam?.id]);
 
 
     const currentUserId = currentProfile?.id ?? null;
@@ -773,19 +753,29 @@ function App() {
                 out: 0,
                 noResponse: 0,
             });
+
+            setRsvpsByProfile({});
             return;
         }
 
         async function loadTeamAttendance() {
-            const { data, attendanceError } = await supabase
+            const { data, error: attendanceError } = await supabase
                 .from("game_rsvps")
-                .select("status")
+                .select("profile_id, status")
                 .eq("game_id", upcomingGame.id);
             
             if (attendanceError) {
-                console.error("Unable to load team attendance:", attendanceError);
+                console.error("Unable to load team attendance:", attendanceError)
                 return;
             }
+
+            const teamProfileIds = new Set(
+                (myTeam.team_members ?? []).map(
+                    (member) =>
+                        member.profile_id ??
+                        member.profiles?.id
+                )
+            )
 
             const attendance = {
                 going: 0,
@@ -794,35 +784,69 @@ function App() {
                 noResponse: 0,
             };
 
+            const nextRsvpsByProfile = {};
+
             for (const rsvp of data ?? []) {
-                if (rsvp.status == "going") {
+                // Ignore RSVPS from the opposing team.
+                if (!teamProfileIds.has(rsvp.profile_id)) {
+                    continue
+                }
+                // This rebuilds the Tonight's Roster after a refresh
+                nextRsvpsByProfile[rsvp.profile_id] = rsvp.status ?? "pending"
+
+                if (rsvp.status === "going") {
                     attendance.going += 1;
-                } else if (rsvp.status == "maybe") {
+                } else if (rsvp.status === "maybe") {
                     attendance.maybe += 1;
-                } else if (rsvp.status == "out") {
+                } else if (rsvp.status === "out") {
                     attendance.out += 1;
                 }
             }
 
+            const responded = attendance.going + attendance.maybe + attendance.out
+
+            attendance.noResponse = Math.max(
+                0,
+                teamProfileIds.size - responded
+            )
+
             setTeamAttendance(attendance);
+
+            // Persisted DB values are now copied back into React state.
+            setRsvpsByProfile(nextRsvpsByProfile)
         
         }
 
         loadTeamAttendance();
-    }, [upcomingGame?.id]);
+    }, [upcomingGame?.id, myTeam?.id, myTeam?.team_members]);
+
+    const rosterAttendance = Object.values(
+        rsvpsByProfile
+    ).reduce(
+        (counts, status) => {
+            if (status === "going") {
+                counts.going += 1
+            } else if (status === "maybe") {
+                counts.maybe += 1
+            } else if (status === "out") {
+                counts.out += 1
+            }
+
+            return counts
+        },
+        {
+            going: 0,
+            maybe: 0,
+            out: 0,
+            noResponse: 0,
+        }
+    )
 
     const gameContext = buildNextGameContext({
         game: upcomingGame,
         myTeam,
         teams,
-        attendance: {
-            ...teamAttendance,
-            noResponse: countNoResponse(
-                myTeam?.roster ?? [],
-                userRsvp,
-                currentUserId
-            ),
-        },
+        attendance: teamAttendance,
         subRequested,
         userRsvp,
         currentUserId,
@@ -833,14 +857,23 @@ function App() {
         if (
             !upcomingGame?.id ||
             !currentProfile?.id ||
+            !isValidRsvpStatus(status) ||
             status === userRsvp
         ) {
             return;
         }
 
+        if (!canRsvpToGame(upcomingGame, myTeam?.id)) {
+            console.warn(
+                "Blocked RSVP for game outside player's team",
+                upcomingGame.id
+            );
+            return;
+        }
+
         const previousStatus = userRsvp;
 
-        const { error: rsvpError } = await supabase
+        const { data: savedRsvp, error: rsvpError } = await supabase
             .from("game_rsvps")
             .upsert(
                 {
@@ -852,7 +885,9 @@ function App() {
                 {
                     onConflict: "game_id,profile_id",
                 }
-            );
+            )
+            .select("game_id, profile_id, status, updated_at")
+            .single()
 
         if (rsvpError) {
             console.error("Unable to save RSVP:", rsvpError);
@@ -861,23 +896,33 @@ function App() {
 
         setUserRsvp(status);
 
-        setTeamAttendance((current) => {
-            const next = { ...current };
+        setRsvpsByProfile((current) => ({
+            ...current,
+            [currentProfile.id]: status,
+        }));
 
-            if (
-                previousStatus && 
-                previousStatus !== "pending"
-            ) {
-                next[previousStatus] = Math.max(
-                    0, 
-                    (next[previousStatus] ?? 0) - 1
-                );
-            }
-        
-            next[status] = (next[status] ?? 0) + 1;
+        setTeamAttendance((current) =>
+            applyRsvpAttendanceChange(
+                current,
+                previousStatus,
+                status
+            )
+        );
 
-            return next;
-        });
+        // Keep the schedule state in sync when an RSVP changes on Dashboard.
+        setMobileRsvpsByGame((current) => ({
+            ...current,
+            [upcomingGame.id]: status,
+        }));
+
+        setMobileAttendanceByGame((current) => ({
+            ...current,
+            [upcomingGame.id]: applyRsvpAttendanceChange(
+                current[upcomingGame.id] ?? teamAttendance,
+                previousStatus,
+                status
+            ),
+        }));
 
         await createLeagueFeedEvent({
             eventType: "attendance_update",
@@ -887,7 +932,7 @@ function App() {
             } marked ${rsvpLabel(status)} for ${
                 gameContext?.matchup ?? "the next game"
             }.`,
-            teamId: currentTeamId,
+            teamId: myTeam.id,
             relatedEntityType: "game",
             relatedEntityId: upcomingGame.id,
         });
@@ -915,6 +960,7 @@ function App() {
 
             const nextRsvpsByGame = {};
             const nextAttendanceByGame = {};
+            const nextRsvpsByProfileByGame = {}
             
             // Create an empty bucket for every game first
             for (const game of upcomingGames) {
@@ -926,21 +972,37 @@ function App() {
                     out: 0,
                     noResponse: 0,
                 };
+
+                nextRsvpsByProfileByGame[game.id] = {}
             }
+
+            const teamProfileIds = new Set(
+                (myTeam?.team_members ?? []).map(
+                    (member) =>
+                        member.profile_id ??
+                        member.profiles?.id
+                )
+            )
 
             // Now fill those buckets from Supabase
             for (const rsvp of data ?? []) {
+                if (!teamProfileIds.has(rsvp.profile_id)) {
+                    continue
+                }
+
                 const attendance = nextAttendanceByGame[rsvp.game_id];
 
                 if (!attendance) {
                     continue;
                 }
 
-                if (rsvp.status == "going") {
+                nextRsvpsByProfileByGame[rsvp.game_id][rsvp.profile_id] = rsvp.status ?? "pending"
+
+                if (rsvp.status === "going") {
                     attendance.going += 1;
-                } else if (rsvp.status == "maybe") {
+                } else if (rsvp.status === "maybe") {
                     attendance.maybe += 1;
-                } else if (rsvp.status == "out") {
+                } else if (rsvp.status === "out") {
                     attendance.out += 1;
                 }
 
@@ -950,12 +1012,29 @@ function App() {
                 }
             }
 
+            // Calculate unanwsered players for each game.
+            for (const game of upcomingGames) {
+                const attendance = nextAttendanceByGame[game.id]
+
+                if (!attendance) {
+                    continue
+                }
+
+                const responded = attendance.going + attendance.maybe + attendance.out
+
+                attendance.noResponse = Math.max(
+                    0,
+                    teamProfileIds.size - responded
+                )
+            }
+
             setMobileRsvpsByGame(nextRsvpsByGame);
             setMobileAttendanceByGame(nextAttendanceByGame);
+            setMobileRsvpsByProfileByGame(nextRsvpsByProfileByGame)
         }
 
         loadMobileGameData();
-    }, [upcomingGames, currentProfile?.id]);
+    }, [upcomingGames, currentProfile?.id, myTeam?.id]);
 
     const mobileGameContexts = upcomingGames
         .map((game) => {
@@ -989,24 +1068,48 @@ function App() {
         .filter((item) => item.context);
     
     async function onMobileRsvp(game, status) {
-        if (!currentProfile?.id || !game?.id) {
+        if (
+            !currentProfile?.id ||
+            !game?.id ||
+            !isValidRsvpStatus(status)
+        ) {
             return;
+        }
+
+        if (!canRsvpToGame(game, myTeam?.id)) {
+            console.warn(
+                "Blocked RSVP for game outside player's team",
+                game.id
+            );
+            return;
+        }
+
+        if (game.id === upcomingGame?.id) {
+            setRsvpsByProfile((current) => ({
+                ...current,
+                [currentProfile.id]: status,
+            }));
         }
 
         const previousStatus = mobileRsvpsByGame[game.id] ?? "pending";
 
+        if (status === previousStatus) {
+            return;
+        }
+
         const { error } = await supabase
-        .from("game_rsvps")
-        .upsert(
-            {
-                game_id: game.id,
-                profile_id: currentProfile.id,
-                status,
-            },
-            {
-                onConflict: "game_id,profile_id",
-            }
-        );
+            .from("game_rsvps")
+            .upsert(
+                {
+                    game_id: game.id,
+                    profile_id: currentProfile.id,
+                    status,
+                    updated_at: new Date().toISOString(),
+                },
+                {
+                    onConflict: "game_id,profile_id",
+                }
+            );
 
         if (error) {
             console.error(
@@ -1021,40 +1124,44 @@ function App() {
             [game.id]: status,
         }));
 
-        // Keep the desktop Next Game RSVP in sync with schedule changes
-        if (game.id === upcomingGame?.id) {
-            setUserRsvp(status);
-        }
-
-        setMobileAttendanceByGame((current) => {
-            const currentAttendance =
+        setMobileAttendanceByGame((current) => ({
+            ...current,
+            [game.id]: applyRsvpAttendanceChange(
                 current[game.id] ?? {
                     going: 0,
                     maybe: 0,
                     out: 0,
                     noResponse: 0,
-                };
-            
-            const nextAttendance = {
-                ...currentAttendance,
-            };
+                },
+                previousStatus,
+                status
+            ),
+        }));
 
-            if (
-                previousStatus &&
-                previousStatus !== "pending"
-            ) {
-                nextAttendance[previousStatus] = Math.max(
-                    0,
-                    (nextAttendance[previousStatus] ?? 0) - 1
-                );
-            }
+        // Keep the desktop Next Game RSVP and counts in sync with
+        // changes made from Schedule/mobile.
+        if (game.id === upcomingGame?.id) {
+            setUserRsvp(status);
+            setTeamAttendance((current) =>
+                applyRsvpAttendanceChange(
+                    current,
+                    previousStatus,
+                    status
+                )
+            );
+        }
 
-            nextAttendance[status] = (nextAttendance[status] ?? 0) + 1;
-
-            return {
-                ...current,
-                [game.id]: nextAttendance,
-            };
+        await createLeagueFeedEvent({
+            eventType: "attendance_update",
+            title: "Attendance updated",
+            message: `${
+                currentProfile.full_name ?? "A player"
+            } marked ${rsvpLabel(status)} for ${
+                game.home_team_name ?? "TBD"
+            } vs ${game.away_team_name ?? "TBD"}.`,
+            teamId: myTeam.id,
+            relatedEntityType: "game",
+            relatedEntityId: game.id,
         });
     }
     
@@ -1337,6 +1444,7 @@ function App() {
                         teams={teams}
                         games={upcomingGames}
                         mobileGameContexts={mobileGameContexts}
+                        mobileRsvpsByProfileByGame={mobileRsvpsByProfileByGame}
                         onMobileRsvp={onMobileRsvp}
                     />
                 )
@@ -1344,13 +1452,8 @@ function App() {
             case "schedule":
                 return (
                     <ScheduleView
-                        teams={teams}
-                        myTeam={myTeam}
-                        currentUserId={currentUserId}
                         currentTeamId={currentTeamId}
-                        userRsvp={userRsvp}
-                        onRsvp={handleRsvp}
-                        gameContext={gameContext}
+                        myTeam={myTeam}
                         onMessageTeam={() =>
                             openChat(getChatPrefill("game", gameContext))
                         }
@@ -1358,7 +1461,6 @@ function App() {
                             setSubRequested(true)
                             openChat(getChatPrefill("sub", gameContext))
                         }}
-                        mobileGameContexts={mobileGameContexts}
                         onMobileRsvp={onMobileRsvp}
                         mobileRsvpsByGame={mobileRsvpsByGame}
                         mobileAttendanceByGame={mobileAttendanceByGame}
@@ -1599,15 +1701,166 @@ function App() {
                 {!selectedPlayer && (
                     <TonightsRoster
                     game={upcomingGame}
-                    teams={teams}
-                    userRsvp={userRsvp}
-                    currentUserId={currentUserId}
+                    myTeam={myTeam}
+                    rsvpsByProfile={rsvpsByProfile}
                     onPromptPlayers={promptNoResponse}
                 />
                 )}
             </div>
         </div>
     );
+}
+
+function GameRosterList({
+    players = [],
+    rsvpsByProfile = {},
+    variant = "desktop",
+}) {
+    return (
+        <ul className="rail-roster-list">
+            {players.map((player) => {
+                const profile = player.profiles ?? null
+
+                const playerName = player.profiles?.full_name ?? player.name ?? "Unknown Player"
+
+                const profileId = player.profile_id ?? player.profiles?.id
+
+                const status = rsvpsByProfile[profile.id] ?? "pending"
+
+                const initials = playerName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()
+
+                if (variant == "mobile") {
+                    return (
+                        <li
+                            key={player.id ?? profileId ?? playerName}
+                            className={`mobile-roster-item rail-roster-item--${status}`}
+                        >
+                            <div className="mobile-roster-player">
+                                <div className="roster-player-avatar">
+                                    {initials}
+                                </div>
+
+                                <div className="mobile-roster-player-info">
+                                    <strong>{playerName}</strong>
+                                    <span>
+                                        {{
+                                            forward: "Forward",
+                                            defense: "Defense",
+                                            goalie: "Goalie",
+                                            F: "Forward",
+                                            D: "Defense",
+                                            G: "Goalie",
+                                        }[player.position] ?? player.position ?? "Position not provided"}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div
+                                className={`mobile-roster-status mobile-roster-status--${status}`}
+                                aria-label={rsvpLabel(status)}
+                            >
+                                {status === "going" && "✓"}
+                                {status === "maybe" && "?"}
+                                {status === "out" && "×"}
+                                {status === "pending" && "—"}
+                            </div>
+                        </li>
+                    )
+                }
+
+                return (
+                    <li
+                        key={player.id ?? profileId ?? playerName}
+                        className={`rail-roster-item rail-roster-item--${status}`}
+                    >
+                        <span className="rail-roster-player-name">
+                            {playerName}
+                        </span>
+
+                        <span className={`text-${status}`}>
+                            {rsvpLabel(status)}
+                        </span>
+                    </li>
+                )
+            })}
+        </ul>
+    )
+}
+
+function GameRosterModal({
+    game,
+    myTeam,
+    rsvpsByProfile = {},
+    onClose,
+}) {
+    if (!game) {
+        return null
+    }
+
+    const players = myTeam?.team_members ?? myTeam?.roster ?? []
+
+    return (
+        <div className="modal-backdrop mobile-roster-backdrop" onClick={onClose}>
+            <section className="mobile-roster-modal" onClick={(event) => event.stopPropagation()}>
+                <header className="mobile-roster-header">
+                    <div>
+                        <span className="col-label">
+                            Game Roster
+                        </span>
+
+                        <h2>
+                            {game.home_team_name} vs {" "}
+                            {game.away_team_name}
+                        </h2>
+                    </div>
+
+                    <button
+                        type="button"
+                        className="modal-close"
+                        onClick={onClose}
+                    >
+                        Close
+                    </button>
+                </header>
+
+                <div className="mobile-roster-game-info">
+                    <span>
+                        {formatGameDate(game.game_date)}
+                    </span>
+
+                    <span>
+                        {formatGameTime(game.start_time)}
+                    </span>
+
+                    <span>
+                        {game.location}
+                        {game.rink
+                            ? ` · ${game.rink}`
+                            : ""}
+                    </span>
+                </div>
+
+                <div className="mobile-roster-summary">
+                    {Object.values(rsvpsByProfile).filter(
+                        (status) => status === "going"
+                    ).length} players going
+                </div>
+
+                {players.length === 0 ? (
+                    <p className="empty-state">
+                        No roster loaded.
+                    </p>
+                ) : (
+                    <GameRosterList
+                        players={players}
+                        rsvpsByProfile={rsvpsByProfile}
+                        variant="mobile"
+                    />
+                )}
+
+            </section>
+        </div>
+    )
 }
 
 function DashboardView({
@@ -1626,19 +1879,17 @@ function DashboardView({
     onToggleFeed,
     teams,
     games,
-    mobileGameContexts,
+    mobileGameContexts = [],
+    mobileRsvpsByProfileByGame = {},
     onMobileRsvp,
 }) {
     const subStatus = formatSubStatus(myTeam?.substituteStatus, subRequested);
-    const noResponse = countNoResponse(
-        myTeam?.roster ?? [],
-        userRsvp,
-        currentUserId
-    );
+    const noResponse = gameContext?.noResponse ?? 0;
     const attendanceDetail = gameContext ? formatAttendanceDetail(gameContext) : "";
 
     const [gameActionsOpen, setGameActionsOpen] = useState(false);
 
+    const [rosterGame, setRosterGame] = useState(null) // not duplicate data state - tracks which mobile game did the user tap "View Roster"
     return (
         <div className="page-view dashboard-view">
             <header className="page-header">
@@ -1804,6 +2055,15 @@ function DashboardView({
                                                             <button
                                                                 type="button"
                                                                 onClick={() => {
+                                                                    setGameActionsOpen(false)
+                                                                    setRosterGame(game)
+                                                                }}
+                                                            >
+                                                                View Roster
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
                                                                     setGameActionsOpen(false);
                                                                     onRequestSub();
                                                                 }}
@@ -1866,6 +2126,18 @@ function DashboardView({
                         ))}
                     </div>
                 </section>
+                {rosterGame && (
+                    <GameRosterModal
+                        game={rosterGame}
+                        myTeam={myTeam}
+                        rsvpsByProfile={
+                            mobileRsvpsByProfileByGame[
+                                rosterGame.id
+                            ] ?? {}
+                        }
+                        onClose={() => setRosterGame(null)}
+                    />
+                )}
             </div>
         </div>
     );
@@ -1914,43 +2186,15 @@ function TeamCard({ team, games, teams, onSelect, compact = false }) {
     );
 }
 
-function formatGameDate(dateString) {
-    if (!dateString) return 'TBD';
-
-    const [year, month, day] = dateString.split('-').map(Number);
-
-    if (!year || !month || !day) {
-        return dateString;
-    }
-
-    const date = new Date(year, month - 1, day);
-
-    return date.toLocaleDateString('en-US', {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric'
-    });
-}
-
-function formatGameTime(timeString) {
-    if (!timeString) return 'TBD';
-
-    const [hours, minutes] = timeString.split(':').map(Number);
-
-    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-        return timeString;
-    }
-
-    const date = new Date();
-    date.setHours(hours, minutes, 0, 0);
-
-    return date.toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit'
-    });
-}
-
-function ScheduleView({ teams, myTeam, currentUserId, currentTeamId, userRsvp, onRsvp, gameContext, onMessageTeam, onRequestSub, mobileGameContexts = [], onMobileRsvp, mobileRsvpsByGame, mobileAttendanceByGame }) {
+function ScheduleView({
+    myTeam,
+    currentTeamId,
+    onMessageTeam,
+    onRequestSub,
+    onMobileRsvp,
+    mobileRsvpsByGame,
+    mobileAttendanceByGame,
+}) {
     const [games, setGames] = useState([])
     const [detailGame, setDetailGame] = useState(null);
     const [rsvpGameId, setRsvpGameId] = useState(null);
@@ -1958,22 +2202,6 @@ function ScheduleView({ teams, myTeam, currentUserId, currentTeamId, userRsvp, o
 
     const year = calendarDate.getFullYear();
     const month = calendarDate.getMonth();
-
-    function formatDateKey(date) {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, "0");
-        const day = String(date.getDate()).padStart(2, "0");
-
-        return `${year}-${month}-${day}`;
-    }
-
-    function formatDateKey(date) {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, "0");
-        const day = String(date.getDate()).padStart(2, "0");
-
-        return `${year}-${month}-${day}`;
-    }
 
     function goToPreviousMonth() {
         setCalendarDate((current) =>
@@ -2001,6 +2229,8 @@ function ScheduleView({ teams, myTeam, currentUserId, currentTeamId, userRsvp, o
 
     useEffect(() => {
         if (!myTeam?.id) {
+            setGames([]);
+            setRsvpGameId(null);
             return;
         }
 
@@ -2016,7 +2246,7 @@ function ScheduleView({ teams, myTeam, currentUserId, currentTeamId, userRsvp, o
                 return;
             }
 
-            setGames(data);
+            setGames(filterGamesForTeam(data ?? [], myTeam.id));
         }
 
         loadGames();
@@ -2045,18 +2275,6 @@ function ScheduleView({ teams, myTeam, currentUserId, currentTeamId, userRsvp, o
         calendarDays.push(new Date(cursor));
         cursor.setDate(cursor.getDate() + 1);
     }
-
-    // Mobile schedule: only show games in the currently selected calendar month
-    const mobileMonthGames = games.filter((game) => {
-        const gameDate = new Date(`${game.game_date}T00:00:00`);
-
-        return (
-            gameDate.getFullYear() === year && 
-            gameDate.getMonth() === month
-        );
-    });
-
-
 
     return (
         <div className="page-view schedule-view">
@@ -2159,12 +2377,9 @@ function ScheduleView({ teams, myTeam, currentUserId, currentTeamId, userRsvp, o
                                             noResponse: 0,
                                         };
 
-
-                                    const going = attendance.going;
-                                    const maybe = attendance.maybe;
-                                    const out = attendance.out;
-
                                     const showRsvp = rsvpGameId === game.id;
+
+                                    const canRsvp = canRsvpToGame(game, currentTeamId);
 
                                     return (
                                     <div
@@ -2211,19 +2426,19 @@ function ScheduleView({ teams, myTeam, currentUserId, currentTeamId, userRsvp, o
                                         </button>
 
                                         <div className="schedule-calendar-rsvp-wrap">
-                                            <button
-                                            type="button"
-                                            className="schedule-calendar-rsvp-button"
-                                            onClick={() =>
-                                                setRsvpGameId(
-                                                    showRsvp ? null : game.id
-                                                )
-                                            }
-                                        >
-                                            RSVP
-                                            </button>
+                                            {canRsvp && (
+                                                <button
+                                                type="button"
+                                                className="schedule-calendar-rsvp-button"
+                                                onClick={() =>
+                                                    setRsvpGameId(showRsvp ? null : game.id)
+                                                }
+                                            >
+                                                RSVP
+                                                </button>
+                                            )}
 
-                                            {showRsvp && (
+                                            {canRsvp && showRsvp && (
                                                 <div className="schedule-calendar-rsvp-popover">
                                                     <span className="col-label">
                                                         Your RSVP
@@ -2276,6 +2491,11 @@ function ScheduleView({ teams, myTeam, currentUserId, currentTeamId, userRsvp, o
                         };
                 
                     const showRsvp = rsvpGameId === game.id;
+
+                    const canRsvp = canRsvpToGame(
+                        game,
+                        currentTeamId
+                    );
 
                     const gameDate = new Date(`${game.game_date}T00:00:00`);
 
@@ -2345,6 +2565,7 @@ function ScheduleView({ teams, myTeam, currentUserId, currentTeamId, userRsvp, o
                                 </button>
 
                                 {/* RSVP status */}
+                                {canRsvp && (
                                 <div className="mobile-schedule-rsvp">
                                     <button
                                         type="button"
@@ -2373,13 +2594,8 @@ function ScheduleView({ teams, myTeam, currentUserId, currentTeamId, userRsvp, o
                                             <RsvpControls
                                                 value={gameRsvp}
                                                 onChange={(status) => {
-                                                    onMobileRsvp(
-                                                        game,
-                                                        status
-                                                    );
-                                                    setRsvpGameId(
-                                                        null
-                                                    );
+                                                    onMobileRsvp(game, status);
+                                                    setRsvpGameId(null);
                                                 }}
                                             />
 
@@ -2391,6 +2607,7 @@ function ScheduleView({ teams, myTeam, currentUserId, currentTeamId, userRsvp, o
                                         </div>
                                     )}
                                 </div>
+                                )}
                             </div>
                         </div>
                     );
@@ -2407,6 +2624,7 @@ function ScheduleView({ teams, myTeam, currentUserId, currentTeamId, userRsvp, o
             {detailGame && (
                 <GameDetailModal
                     game={detailGame}
+                    attendance={mobileAttendanceByGame[detailGame.id]}
                     onClose={() => setDetailGame(null)}
                     onMessageTeam={() => {
                          setDetailGame(null); 
@@ -2694,7 +2912,18 @@ function TeamDetail({ team, teams, games, currentUserId, league, userRsvp, onBac
                 <tbody>
                     {roster.map((member) => (
                             <tr key={member.id} onClick={() => onSelectPlayer(member)}>
-                                <td className="roster-name">{member.profiles?.full_name ?? 'Unknown player'}</td>
+                                <td className="roster-name">
+                                    <div className="team-roster-player">
+                                        <div className="team-roster-avatar">
+                                            {(
+                                                member.profiles?.full_name ?? 'Unknown player'
+                                            ).split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}
+                                        </div>
+                                        <span>
+                                            {member.profiles?.full_name ?? "Unknown player"}
+                                        </span>
+                                    </div>
+                                </td>
                                 <td>{member.jersey_number}</td>
                                 <td>
                                     {{
@@ -2715,7 +2944,7 @@ function TeamDetail({ team, teams, games, currentUserId, league, userRsvp, onBac
     );
 }
 
-function PlayerDetail({ player, userRsvp, onBack }) {
+function PlayerDetail({ player, userRsvp, currentUserId, onBack }) {
     const status = resolveRsvp(player, userRsvp, currentUserId);
     return (
         <div className="page-view player-detail-view">
@@ -2747,7 +2976,6 @@ function NoticesView({
     onToggleFeed,
     onViewGame,
 
-    isAdmin,
     canCreateAnnouncement,
     announcementFormOpen,
     announcementDraft,

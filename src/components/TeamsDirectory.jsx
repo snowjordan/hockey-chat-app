@@ -25,9 +25,6 @@ export default function TeamsDirectory() {
                             )
                         )
                     `)
-
-                    console.log('Teams query ran')
-                    console.log('Teams returned from Supabase:', data)
                 
                     if (error) {
                         console.error('Teams query error:', error)

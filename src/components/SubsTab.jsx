@@ -5,6 +5,8 @@ export default function SubsTab() {
   const [availableSubs, setAvailableSubs] = useState([])
   const [loading, setLoading] = useState(true)
   const [currentProfileId, setCurrentProfileId] = useState(null)
+  const [activeSubTab, setActiveSubTab] = useState('general')
+  const [isAvailableToGoalieSub, setIsAvailableToGoalieSub] = useState(false)
   const [isAvailableToSub, setIsAvailableToSub] = useState(false)
   const [updatingAvailability, setUpdatingAvailability] = useState(false)
   const [selectedTeamFilter, setSelectedTeamFilter] = useState('all')
@@ -30,7 +32,7 @@ export default function SubsTab() {
       error: profileError,
     } = await supabase
       .from('profiles')
-      .select('id, is_available_to_sub')
+      .select('id, is_available_to_sub, is_available_to_goalie_sub')
       .eq('auth_user_id', user.id)
       .maybeSingle()
 
@@ -50,6 +52,47 @@ export default function SubsTab() {
     setIsAvailableToSub(
       profileData.is_available_to_sub ?? false
     )
+    setIsAvailableToGoalieSub(profileData.is_available_to_goalie_sub ?? false)
+  }
+
+
+
+  async function handleGoalieAvailabilityChange(
+    isAvailable
+  ) {
+    if (!currentProfileId) {
+      alert('Could not find your profile.')
+      return
+    }
+
+    setUpdatingAvailability(true)
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        is_available_to_goalie_sub: isAvailable,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', currentProfileId)
+
+    if (error) {
+      console.error(
+        'Error updating goalie sub availability:',
+        error
+      )
+
+      alert(
+        'Could not update your goalie sub availability.'
+      )
+
+      setUpdatingAvailability(false)
+      return
+    }
+
+    setIsAvailableToGoalieSub(isAvailable)
+    setUpdatingAvailability(false)
+
+    await loadAvailableSubs()
   }
 
   async function handleAvailabilityChange(isAvailable) {
@@ -85,6 +128,8 @@ export default function SubsTab() {
     await loadAvailableSubs()
   }
 
+
+
   async function loadAvailableSubs() {
     setLoading(true)
 
@@ -102,6 +147,7 @@ export default function SubsTab() {
           full_name,
           phone,
           is_available_to_sub,
+          is_available_to_goalie_sub,
 
           team_members (
             position,
@@ -118,7 +164,6 @@ export default function SubsTab() {
           name
         )
       `)
-      .eq('profiles.is_available_to_sub', true)
       .order('created_at')
 
     if (subPreferenceError) {
@@ -158,6 +203,11 @@ export default function SubsTab() {
         profileId: profile.id,
         fullName: profile.full_name,
         phone: profile.phone,
+
+        isAvailableToSub:
+          profile.is_available_to_sub ?? false,
+        isAvailableToGoalieSub:
+          profile.is_available_to_goalie_sub ?? false,
         position:
           rosterMembership?.position ?? 'Not provided',
         regularTeam:
@@ -252,10 +302,17 @@ export default function SubsTab() {
     }
   }, [])
 
+  const generalSubs = availableSubs.filter((sub) => sub.isAvailableToSub)
+  const goalieSubs = availableSubs.filter((sub) => sub.isAvailableToGoalieSub)
+  const subsForActiveTab =
+    activeSubTab === 'goalies'
+      ? goalieSubs
+      : generalSubs
+
   const filteredSubs =
     selectedTeamFilter === 'all'
-        ? availableSubs
-        : availableSubs.filter((sub) =>
+        ? subsForActiveTab
+        : subsForActiveTab.filter((sub) =>
             sub.selectedTeams.some(
                 (team) => team.id === selectedTeamFilter
             )
@@ -264,6 +321,31 @@ export default function SubsTab() {
   return (
     <div className="subs-page">
       <header className="page-header">
+        <div className='sub-type-tabs'>
+          <button
+            type='button'
+            className={`action-btn ${
+              activeSubTab === 'general'
+                ? 'action-btn--primary'
+                : 'action-btn--secondary'
+            }`}
+            onClick={() => setActiveSubTab('general')}
+          >
+            General
+          </button>
+
+          <button
+              type="button"
+              className={`action-btn ${
+                activeSubTab === 'goalies'
+                  ? 'action-btn--primary'
+                  : 'action-btn--secondary'
+              }`}
+              onClick={() => setActiveSubTab('goalies')}
+          >
+              Goalies
+          </button>
+        </div>
         <div>
           <h2>Available Subs</h2>
 
@@ -285,7 +367,8 @@ export default function SubsTab() {
             </p>
           </div>
         </header>
-
+        
+        {activeSubTab === 'general' && (
         <label className="checkbox-field">
           <input
             type="checkbox"
@@ -306,6 +389,27 @@ export default function SubsTab() {
               : 'I am available to sub'}
           </span>
         </label>
+        )}
+
+        {activeSubTab === 'goalies' && (
+          <label className="checkbox-field">
+            <input
+              type="checkbox"
+              checked={isAvailableToGoalieSub}
+              disabled={
+                !currentProfileId ||
+                updatingAvailability
+              }
+              onChange={(event) =>
+                handleGoalieAvailabilityChange(
+                  event.target.checked
+                )
+              }
+            />
+
+            <span>I am available to sub as goalie</span>
+          </label>
+        )}
 
         {!currentProfileId && (
           <p className="page-subtitle">

@@ -344,6 +344,41 @@ body {
     line-height: 1.3;
 }
 
+.rail-roster-item--going {
+  border-color: #2e9d58;
+}
+
+.rail-roster-item--maybe {
+  border-color: #d9a514;
+}
+
+.rail-roster-item--out {
+  border-color: #d9534f;
+}
+
+.rail-roster-item--pending {
+  border-color: #d8e0e8;
+}
+
+.rail-roster-item--going .text-going {
+  color: #2f9e5b;
+  font-weight: 600;
+}
+
+.rail-roster-item--maybe .text-maybe {
+  color: #b8860b;
+  font-weight: 600;
+}
+
+.rail-roster-item--out .text-out {
+  color: #d9534f;
+  font-weight: 600;
+}
+
+.rail-roster-item--pending .text-pending {
+  color: #6b7f93;
+}
+
 .rail-roster-item span:first-child {
     min-width: 0;
     color: #17324d;
@@ -846,6 +881,29 @@ body {
   height: 100%;
   object-fit: contain;
   object-position: center;
+}
+
+.team-roster-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.team-roster-avatar {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+  background: #edf1f5;
+
+  color: #40566c;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 
@@ -3105,6 +3163,12 @@ button {
   width: min(320px, 100%);
 }
 
+.sub-type-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
 .subs-team-filter select {
   width: 100%;
 }
@@ -3734,7 +3798,162 @@ button {
     min-width: calc(100% - 14px);
     scroll-snap-align: start;
     scroll-snap-stop: always;
+    position: relative;
   }
+
+  .mobile-game-slide .game-actions-menu {
+    top: auto;
+    bottom: calc(100% + 8px)
+  }
+
+  /* - Mobile Roster */
+
+  .mobile-roster-backdrop {
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.mobile-roster-modal {
+  width: 100%;
+  max-width: 520px;
+  max-height: 80vh;
+  overflow-y: auto;
+
+  background: #fff;
+  border-radius: 18px;
+  padding: 20px;
+}
+
+.mobile-roster-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+
+  padding-bottom: 14px;
+  border-bottom: 1px solid #dce4ec;
+}
+
+.mobile-roster-header h2 {
+  margin: 4px 0 0;
+}
+
+.mobile-roster-game-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+
+  padding: 14px 0;
+
+  color: #6b7f93;
+  font-size: 13px;
+}
+
+.mobile-roster-modal .rail-roster-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.mobile-roster-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+
+  padding: 12px 0;
+  border-bottom: 1px solid #e2e8ef;
+}
+
+.mobile-roster-item:last-child {
+  border-bottom: 0;
+}
+
+.mobile-roster-player {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mobile-roster-modal .roster-player-avatar {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+  background: #edf1f5;
+
+  font-size: 12px;
+  font-weight: 700;
+  color: #40566c;
+}
+
+.mobile-roster-player-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mobile-roster-player-info strong {
+  font-size: 15px;
+  line-height: 1.2;
+  color: #2d4358;
+}
+
+.mobile-roster-player-info span {
+  font-size: 12px;
+  line-height: 1.2;
+  color: #71869a;
+}
+
+.mobile-roster-status {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.mobile-roster-status--going {
+  color: #2f9e5b;
+  border: 1.5px solid #2f9e5b;
+}
+
+.mobile-roster-status--maybe {
+  color: #c89412;
+  border: 1.5px solid #c89412;
+}
+
+.mobile-roster-status--out {
+  color: #d9534f;
+  border: 1.5px solid #d9534f;
+}
+
+.mobile-roster-status--pending {
+  color: #8191a1;
+  border: 1.5px solid #d5dee7;
+}
+
+.mobile-roster-summary {
+  margin: 10px 0 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #425a70;
+}
 
 }
 

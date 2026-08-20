@@ -251,14 +251,7 @@ export default function ProfileEditor({ profile, onBack, onSaved }) {
 
     const { data: adminResult, error: adminError } =
       await supabase.rpc('is_league_admin')
-
-    console.log('Database admin check:', {
-      adminResult,
-      adminError,
-      profileId: profile.id,
-      authUserId: profile.auth_user_id,
-    })
-
+      
     const { data: updatedProfile, error: profileError } =
       await supabase
         .from('profiles')
