@@ -30,8 +30,14 @@ import ProfileEditor from './components/ProfileEditor';
 import Login from './components/Login';
 import SubsTab from './components/SubsTab';
 import ProfileView from './components/ProfileView';
-import SetPassword from './components/SetPassword'
+import SetPassword from './components/SetPassword';
+import AdminScheduleView from './components/admin/AdminScheduleView';
 
+
+const ADMIN_EMAILS = new Set([
+    "joewjordan@yahoo.com",
+    "connor.jordan1201@gmail.com",
+]);
 
 const NAV_ITEMS = [
     { id: "dashboard", label: "Dashboard" },
@@ -328,6 +334,8 @@ function App() {
 
     const isSetPasswordPage = window.location.pathname === "/set-password" || searchParams.get("page") === "set-password"
 
+    const isAdmin = ADMIN_EMAILS.has(session?.user?.email)
+
     const rawMyTeam = findTeamForProfile(
         teams,
         currentProfile?.id
@@ -555,7 +563,7 @@ function App() {
         const summary = announcementDraft.summary.trim()
         const message = announcementDraft.message.trim()
 
-        if (currentProfile?.is_admin !== true) {
+        if (!isAdmin) {
             setAnnouncementSubmitError(
                 "You do not have permission to create announcements."
             )
@@ -1343,7 +1351,7 @@ function App() {
 
             const isOwnProfile = currentProfile?.id === profile.id
 
-            const isAdmin = currentProfile?.is_admin === true
+
 
             const canEditProfile = isOwnProfile || isAdmin
 
@@ -1494,7 +1502,7 @@ function App() {
                         onToggleFeed={setExpandedFeedId}
                         onViewGame={() => navigateTo("schedule")}
                         
-                        canCreateAnnouncement={currentProfile?.is_admin === true}
+                        canCreateAnnouncement={isAdmin}
                         announcementFormOpen={announcementFormOpen}
                         announcementDraft={announcementDraft}
                         announcementSubmitting={announcementSubmitting}
@@ -1553,6 +1561,10 @@ function App() {
                         }
                     />
                 )
+
+            case "admin-schedule":
+                if (!isAdmin) return null;
+                return <AdminScheduleView />;
 
             default:
                 return null
@@ -1685,6 +1697,19 @@ function App() {
                             {item.label}
                         </button>
                     ))}
+
+                    {isAdmin && (
+                        <>
+                            <div className="sidebar-section-label">Admin</div>
+                            <button
+                                type="button"
+                                className={`sidebar-link${activeView === "admin-schedule" ? " is-active" : ""}`}
+                                onClick={() => navigateTo("admin-schedule")}
+                            >
+                                Schedule
+                            </button>
+                        </>
+                    )}
                 </nav>
 
                 {isMobileNavOpen && (
