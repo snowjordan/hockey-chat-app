@@ -31,8 +31,16 @@ import ProfileEditor from './components/ProfileEditor';
 import Login from './components/Login';
 import SubsTab from './components/SubsTab';
 import ProfileView from './components/ProfileView';
-import SetPassword from './components/SetPassword'
+import SetPassword from './components/SetPassword';
+import AdminScheduleView from './components/admin/AdminScheduleView';
+import AdminProfilesView from './components/admin/AdminProfilesView';
+import AdminNoticeView from './components/admin/AdminNoticeView';
 
+
+const ADMIN_EMAILS = new Set([
+    "joewjordan@yahoo.com",
+    "connor.jordan1201@gmail.com",
+]);
 
 const NAV_ITEMS = [
     { id: "dashboard", label: "Dashboard" },
@@ -412,6 +420,9 @@ function App() {
     const [leagueAlertsLoading, setLeagueAlertsLoading] = useState(false);
     const [leagueAlertsError, setLeagueAlertsError] = useState("");
 
+    const [leagueNotice, setLeagueNotice] = useState(null);
+    const [leagueTicker, setLeagueTicker] = useState(null);
+
     const [announcementFormOpen, setAnnouncementFormOpen] =
     useState(false)
 
@@ -438,6 +449,8 @@ function App() {
     const searchParams = new URLSearchParams(window.location.search)
 
     const isSetPasswordPage = window.location.pathname === "/set-password" || searchParams.get("page") === "set-password"
+
+    const isAdmin = ADMIN_EMAILS.has(session?.user?.email)
 
     const rawMyTeam = findTeamForProfile(
         teams,
@@ -659,6 +672,23 @@ function App() {
         setLeagueAlertsLoading(false);
     }
 
+    async function loadLeagueNotice(leagueName) {
+        if (!leagueName) {
+            setLeagueNotice(null);
+            setLeagueTicker(null);
+            return;
+        }
+        const { data } = await supabase
+            .from("league_notices")
+            .select("id, title, message, created_at, notice_type")
+            .eq("league_name", leagueName)
+            .eq("is_active", true)
+            .order("created_at", { ascending: false });
+        const rows = data ?? [];
+        setLeagueNotice(rows.find((n) => n.notice_type === "banner") ?? null);
+        setLeagueTicker(rows.find((n) => n.notice_type === "ticker") ?? null);
+    }
+
     async function handleCreateAnnouncement(event) {
         event.preventDefault()
 
@@ -666,7 +696,7 @@ function App() {
         const summary = announcementDraft.summary.trim()
         const message = announcementDraft.message.trim()
 
-        if (currentProfile?.is_admin !== true) {
+        if (!isAdmin) {
             setAnnouncementSubmitError(
                 "You do not have permission to create announcements."
             )
@@ -790,6 +820,7 @@ function App() {
         
         loadLeagueAlerts(currentLeagueName);
         loadLeagueFeed(currentLeagueName);
+        loadLeagueNotice(currentLeagueName);
     }, [currentLeagueName]);
 
     const upcomingGame = upcomingGames[nextGameIndex];
@@ -1463,7 +1494,7 @@ function App() {
 
             const isOwnProfile = currentProfile?.id === profile.id
 
-            const isAdmin = currentProfile?.is_admin === true
+
 
             const canEditProfile = isOwnProfile || isAdmin
 
@@ -1566,6 +1597,7 @@ function App() {
                         mobileGameContexts={mobileGameContexts}
                         mobileRsvpsByProfileByGame={mobileRsvpsByProfileByGame}
                         onMobileRsvp={onMobileRsvp}
+                        leagueNotice={leagueNotice}
                     />
                 )
 
@@ -1614,7 +1646,7 @@ function App() {
                         onToggleFeed={setExpandedFeedId}
                         onViewGame={() => navigateTo("schedule")}
                         
-                        canCreateAnnouncement={currentProfile?.is_admin === true}
+                        canCreateAnnouncement={isAdmin}
                         announcementFormOpen={announcementFormOpen}
                         announcementDraft={announcementDraft}
                         announcementSubmitting={announcementSubmitting}
@@ -1674,6 +1706,23 @@ function App() {
                     />
                 )
 
+            case "admin-schedule":
+                if (!isAdmin) return null;
+                return <AdminScheduleView />;
+
+            case "admin-profiles":
+                if (!isAdmin) return null;
+                return <AdminProfilesView />;
+
+            case "admin-notice":
+                if (!isAdmin) return null;
+                return (
+                    <AdminNoticeView
+                        leagueName={currentLeagueName}
+                        onNoticeChanged={() => loadLeagueNotice(currentLeagueName)}
+                    />
+                );
+
             default:
                 return null
         }
@@ -1698,6 +1747,12 @@ function App() {
 
     return (
         <div className="app-layout">
+            {leagueTicker && (
+                <div className="league-ticker-bar">
+                    <span className="league-ticker-icon">📣</span>
+                    <span className="league-ticker-text">{leagueTicker.title}</span>
+                </div>
+            )}
             <header className="app-bar">
                 <div className="app-bar-brand">
                     <button
@@ -1805,6 +1860,33 @@ function App() {
                             {item.label}
                         </button>
                     ))}
+
+                    {isAdmin && (
+                        <>
+                            <div className="sidebar-section-label">Admin</div>
+                            <button
+                                type="button"
+                                className={`sidebar-link${activeView === "admin-schedule" ? " is-active" : ""}`}
+                                onClick={() => navigateTo("admin-schedule")}
+                            >
+                                Schedule
+                            </button>
+                            <button
+                                type="button"
+                                className={`sidebar-link${activeView === "admin-profiles" ? " is-active" : ""}`}
+                                onClick={() => navigateTo("admin-profiles")}
+                            >
+                                Players
+                            </button>
+                            <button
+                                type="button"
+                                className={`sidebar-link${activeView === "admin-notice" ? " is-active" : ""}`}
+                                onClick={() => navigateTo("admin-notice")}
+                            >
+                                Notice
+                            </button>
+                        </>
+                    )}
                 </nav>
 
                 {isMobileNavOpen && (
@@ -2002,6 +2084,7 @@ function DashboardView({
     mobileGameContexts = [],
     mobileRsvpsByProfileByGame = {},
     onMobileRsvp,
+    leagueNotice = null,
 }) {
     const subStatus = formatSubStatus(myTeam?.substituteStatus, subRequested);
     const noResponse = gameContext?.noResponse ?? 0;
@@ -2259,6 +2342,20 @@ function DashboardView({
                     />
                 )}
             </div>
+
+            {leagueNotice && (
+                <div className="league-notice-banner">
+                    <div className="league-notice-banner-content">
+                        <span className="league-notice-banner-icon">📢</span>
+                        <div className="league-notice-banner-text">
+                            <strong className="league-notice-banner-title">{leagueNotice.title}</strong>
+                            {leagueNotice.message && (
+                                <p className="league-notice-banner-message">{leagueNotice.message}</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
