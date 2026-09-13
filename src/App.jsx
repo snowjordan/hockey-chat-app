@@ -14,6 +14,7 @@ import {
     buildNextGameContext,
     formatAttendanceDetail,
     getChatPrefill,
+    loadAttendanceSummaries,
 } from "./utils/gameHelpers.js";
 import {
     applyRsvpAttendanceChange,
@@ -30,16 +31,8 @@ import ProfileEditor from './components/ProfileEditor';
 import Login from './components/Login';
 import SubsTab from './components/SubsTab';
 import ProfileView from './components/ProfileView';
-import SetPassword from './components/SetPassword';
-import AdminScheduleView from './components/admin/AdminScheduleView';
-import AdminProfilesView from './components/admin/AdminProfilesView';
-import AdminNoticeView from './components/admin/AdminNoticeView';
+import SetPassword from './components/SetPassword'
 
-
-const ADMIN_EMAILS = new Set([
-    "joewjordan@yahoo.com",
-    "connor.jordan1201@gmail.com",
-]);
 
 const NAV_ITEMS = [
     { id: "dashboard", label: "Dashboard" },
@@ -119,21 +112,10 @@ function LeagueFeed({ items, limit, expandedId, onToggle, title = "League Feed" 
                     {visible.map((item) => {
                         const expanded = expandedId === item.id;
 
-                        const attendanceStatusClass =
-                            item.type === "attendance_update"
-                                ? item.message.includes("marked Going")
-                                    ? "feed-item--going"
-                                    : item.message.includes("marked Maybe")
-                                    ? "feed-item--maybe"
-                                    : item.message.includes("marked Out")
-                                    ? "feed-item--out"
-                                    : ""
-                                : "";
-
                         return (
                             <li 
                                 key={item.id} 
-                                className={`feed-item feed-item--${item.type} ${attendanceStatusClass}`}
+                                className={`feed-item feed-item--${item.type}`}
                             >
                                 <button
                                     type="button"
@@ -229,50 +211,171 @@ function TonightsRoster({ game, myTeam, rsvpsByProfile = {}, onPromptPlayers }) 
 
 function GameDetailModal({
     game,
-    attendance,
     onClose,
     onMessageTeam,
     onRequestSub,
 }) {
-    const home = game.home_team_name ?? 'TBD';
-    const away = game.away_team_name ?? 'TBD';
+    const home = game.home_team_name ?? "TBD";
+    const away = game.away_team_name ?? "TBD";
     const date = formatGameDate(game.game_date);
     const startTime = formatGameTime(game.start_time);
     const endTime = formatGameTime(game.end_time);
     const time = `${startTime} – ${endTime}`;
-    const rink = `${game.location_name ?? 'TBD'}${game.rink ? ` · ${game.rink}` : ''}`;
-    const { going = 0, maybe = 0, out = 0 } = attendance ?? {};
+    const rink = `${game.location_name ?? "TBD"}${
+        game.rink ? ` · ${game.rink}` : ""
+    }`;
+
+    const [attendanceState, setAttendanceState] = useState(null);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadGameAttendance() {
+            try {
+                const teamIds = [game.home_team_id, game.away_team_id].filter(Boolean);
+                const [membersResult, rsvpsResult] = await Promise.all([
+                    supabase
+                        .from("team_members")
+                        .select("profile_id, team_id, position")
+                        .in("team_id", teamIds),
+                    supabase
+                        .from("game_rsvps")
+                        .select("profile_id, status")
+                        .eq("game_id", game.id),
+                ]);
+
+                if (membersResult.error) throw membersResult.error;
+                if (rsvpsResult.error) throw rsvpsResult.error;
+
+                const goingProfileIds = new Set(
+                    (rsvpsResult.data ?? [])
+                        .filter((rsvp) => rsvp.status === "going")
+                        .map((rsvp) => rsvp.profile_id)
+                );
+                const getTeamStatus = (teamId) => {
+                    const goingMembers = (membersResult.data ?? []).filter(
+                        (member) => member.team_id === teamId && goingProfileIds.has(member.profile_id)
+                    );
+                    const isGoalie = (member) => ["g", "goalie", "goaltender"].includes(
+                        (member.position ?? "").trim().toLowerCase()
+                    );
+                    const goalieIds = new Set(goingMembers.filter(isGoalie).map((member) => member.profile_id));
+                    const skaterIds = new Set(
+                        goingMembers.filter((member) => !goalieIds.has(member.profile_id)).map((member) => member.profile_id)
+                    );
+                    return {
+                        going: new Set(goingMembers.map((member) => member.profile_id)).size,
+                        goalie: goalieIds.size > 0 ? "Has" : "Needed",
+                        subs: skaterIds.size >= 10 ? "No subs needed" : "Subs needed",
+                    };
+                };
+
+                if (!cancelled) {
+                    setAttendanceState({
+                        home: getTeamStatus(game.home_team_id),
+                        away: getTeamStatus(game.away_team_id),
+                    });
+                }
+            } catch (error) {
+                console.error("Unable to load game attendance:", error);
+                if (!cancelled) setAttendanceState({ error: true });
+            }
+        }
+
+        loadGameAttendance();
+        return () => { cancelled = true; };
+    }, [game.id, game.home_team_id, game.away_team_id]);
+
+    const statusLabel = (side, field) => {
+        if (!attendanceState) return "Loading...";
+        if (attendanceState.error) return "Unavailable";
+        const value = attendanceState[side]?.[field];
+        if (value == null) return "Loading...";
+        return field === "going" ? `${value} going` : value;
+    };
 
     return (
         <div className="modal-backdrop">
             <div className="modal-card game-detail-modal">
                 <header className="modal-header">
-                    <h3>{home} vs {away}</h3>
-                    <button type="button" className="modal-close" onClick={onClose}>Close</button>
+                    <h3>
+                        {home} vs {away}
+                    </h3>
+
+                    <button
+                        type="button"
+                        className="modal-close"
+                        onClick={onClose}
+                    >
+                        Close
+                    </button>
                 </header>
 
                 <div className="game-detail-list">
-                    <div><span>Date</span><strong>{date}</strong></div>
-                    <div><span>Time</span><strong>{time}</strong></div>
-                    <div><span>Rink</span><strong>{rink}</strong></div>
                     <div>
-                        <span>Attendance</span>
-                        <strong>
-                            {going} going · {maybe} maybe · {out} out
-                        </strong>
+                        <span>Date</span>
+                        <strong>{date}</strong>
                     </div>
-                    <div><span>Goalie</span><strong>Scheduled</strong></div>
-                    <div><span>Subs</span><strong>No subs needed</strong></div>
+
+                    <div>
+                        <span>Time</span>
+                        <strong>{time}</strong>
+                    </div>
+
+                    <div>
+                        <span>Rink</span>
+                        <strong>{rink}</strong>
+                    </div>
+                </div>
+
+                <div className="game-team-comparison">
+                    <div className="game-team-comparison-header">
+                        <span></span>
+                        <strong>{home}</strong>
+                        <strong>{away}</strong>
+                    </div>
+
+                    <div className="game-team-comparison-row">
+                        <span>Attendance</span>
+                        <strong>{statusLabel("home", "going")}</strong>
+                        <strong>{statusLabel("away", "going")}</strong>
+                    </div>
+
+                    <div className="game-team-comparison-row">
+                        <span>Goalie</span>
+                        <strong>{statusLabel("home", "goalie")}</strong>
+                        <strong>{statusLabel("away", "goalie")}</strong>
+                    </div>
+
+                    <div className="game-team-comparison-row">
+                        <span>Subs</span>
+                        <strong>{statusLabel("home", "subs")}</strong>
+                        <strong>{statusLabel("away", "subs")}</strong>
+                    </div>
                 </div>
 
                 <footer className="modal-actions">
-                    <button type="button" className="action-btn action-btn--primary" onClick={onMessageTeam}>Message Team</button>
-                    <button type="button" className="action-btn action-btn--secondary" onClick={onRequestSub}>Request Sub</button>
+                    <button
+                        type="button"
+                        className="action-btn action-btn--primary"
+                        onClick={onMessageTeam}
+                    >
+                        Message Team
+                    </button>
+
+                    <button
+                        type="button"
+                        className="action-btn action-btn--secondary"
+                        onClick={onRequestSub}
+                    >
+                        Request Sub
+                    </button>
                 </footer>
             </div>
         </div>
     );
 }
+
 function App() {
     const [session, setSession] = useState(null);
     const [authLoading, setAuthLoading] = useState(true);
@@ -309,9 +412,6 @@ function App() {
     const [leagueAlertsLoading, setLeagueAlertsLoading] = useState(false);
     const [leagueAlertsError, setLeagueAlertsError] = useState("");
 
-    const [leagueNotice, setLeagueNotice] = useState(null);
-    const [leagueTicker, setLeagueTicker] = useState(null);
-
     const [announcementFormOpen, setAnnouncementFormOpen] =
     useState(false)
 
@@ -338,8 +438,6 @@ function App() {
     const searchParams = new URLSearchParams(window.location.search)
 
     const isSetPasswordPage = window.location.pathname === "/set-password" || searchParams.get("page") === "set-password"
-
-    const isAdmin = ADMIN_EMAILS.has(session?.user?.email)
 
     const rawMyTeam = findTeamForProfile(
         teams,
@@ -561,23 +659,6 @@ function App() {
         setLeagueAlertsLoading(false);
     }
 
-    async function loadLeagueNotice(leagueName) {
-        if (!leagueName) {
-            setLeagueNotice(null);
-            setLeagueTicker(null);
-            return;
-        }
-        const { data } = await supabase
-            .from("league_notices")
-            .select("id, title, message, created_at, notice_type")
-            .eq("league_name", leagueName)
-            .eq("is_active", true)
-            .order("created_at", { ascending: false });
-        const rows = data ?? [];
-        setLeagueNotice(rows.find((n) => n.notice_type === "banner") ?? null);
-        setLeagueTicker(rows.find((n) => n.notice_type === "ticker") ?? null);
-    }
-
     async function handleCreateAnnouncement(event) {
         event.preventDefault()
 
@@ -585,7 +666,7 @@ function App() {
         const summary = announcementDraft.summary.trim()
         const message = announcementDraft.message.trim()
 
-        if (!isAdmin) {
+        if (currentProfile?.is_admin !== true) {
             setAnnouncementSubmitError(
                 "You do not have permission to create announcements."
             )
@@ -709,7 +790,6 @@ function App() {
         
         loadLeagueAlerts(currentLeagueName);
         loadLeagueFeed(currentLeagueName);
-        loadLeagueNotice(currentLeagueName);
     }, [currentLeagueName]);
 
     const upcomingGame = upcomingGames[nextGameIndex];
@@ -777,7 +857,7 @@ function App() {
 
     // WHat did EVERYONE answer?
     useEffect(() => {
-        if(!upcomingGame?.id) {
+        if(!upcomingGame?.id || !myTeam) {
             setTeamAttendance({
                 going: 0,
                 maybe: 0,
@@ -1281,7 +1361,9 @@ function App() {
                 return
             }
 
-            const formattedFeedItems = (data ?? []).map((event) =>  ({
+            const formattedFeedItems = (data ?? [])
+                .filter((event) => event.event_type !== "attendance_update") 
+                .map((event) =>  ({
                     id: event.id,
                     type: event.event_type,
                     title: event.title,
@@ -1296,6 +1378,13 @@ function App() {
             
             setFeedItems(formattedFeedItems)
             setFeedLoading(false)
+
+            const attendanceSummaries = await loadAttendanceSummaries(supabase, leagueName)
+
+            setFeedItems([
+                ...attendanceSummaries,
+                ...formattedFeedItems,
+            ])
         }
     
     async function createLeagueFeedEvent({
@@ -1374,7 +1463,7 @@ function App() {
 
             const isOwnProfile = currentProfile?.id === profile.id
 
-
+            const isAdmin = currentProfile?.is_admin === true
 
             const canEditProfile = isOwnProfile || isAdmin
 
@@ -1477,7 +1566,6 @@ function App() {
                         mobileGameContexts={mobileGameContexts}
                         mobileRsvpsByProfileByGame={mobileRsvpsByProfileByGame}
                         onMobileRsvp={onMobileRsvp}
-                        leagueNotice={leagueNotice}
                     />
                 )
 
@@ -1526,7 +1614,7 @@ function App() {
                         onToggleFeed={setExpandedFeedId}
                         onViewGame={() => navigateTo("schedule")}
                         
-                        canCreateAnnouncement={isAdmin}
+                        canCreateAnnouncement={currentProfile?.is_admin === true}
                         announcementFormOpen={announcementFormOpen}
                         announcementDraft={announcementDraft}
                         announcementSubmitting={announcementSubmitting}
@@ -1586,23 +1674,6 @@ function App() {
                     />
                 )
 
-            case "admin-schedule":
-                if (!isAdmin) return null;
-                return <AdminScheduleView />;
-
-            case "admin-profiles":
-                if (!isAdmin) return null;
-                return <AdminProfilesView />;
-
-            case "admin-notice":
-                if (!isAdmin) return null;
-                return (
-                    <AdminNoticeView
-                        leagueName={currentLeagueName}
-                        onNoticeChanged={() => loadLeagueNotice(currentLeagueName)}
-                    />
-                );
-
             default:
                 return null
         }
@@ -1627,12 +1698,6 @@ function App() {
 
     return (
         <div className="app-layout">
-            {leagueTicker && (
-                <div className="league-ticker-bar">
-                    <span className="league-ticker-icon">📣</span>
-                    <span className="league-ticker-text">{leagueTicker.title}</span>
-                </div>
-            )}
             <header className="app-bar">
                 <div className="app-bar-brand">
                     <button
@@ -1740,33 +1805,6 @@ function App() {
                             {item.label}
                         </button>
                     ))}
-
-                    {isAdmin && (
-                        <>
-                            <div className="sidebar-section-label">Admin</div>
-                            <button
-                                type="button"
-                                className={`sidebar-link${activeView === "admin-schedule" ? " is-active" : ""}`}
-                                onClick={() => navigateTo("admin-schedule")}
-                            >
-                                Schedule
-                            </button>
-                            <button
-                                type="button"
-                                className={`sidebar-link${activeView === "admin-profiles" ? " is-active" : ""}`}
-                                onClick={() => navigateTo("admin-profiles")}
-                            >
-                                Players
-                            </button>
-                            <button
-                                type="button"
-                                className={`sidebar-link${activeView === "admin-notice" ? " is-active" : ""}`}
-                                onClick={() => navigateTo("admin-notice")}
-                            >
-                                Notice
-                            </button>
-                        </>
-                    )}
                 </nav>
 
                 {isMobileNavOpen && (
@@ -1964,7 +2002,6 @@ function DashboardView({
     mobileGameContexts = [],
     mobileRsvpsByProfileByGame = {},
     onMobileRsvp,
-    leagueNotice = null,
 }) {
     const subStatus = formatSubStatus(myTeam?.substituteStatus, subRequested);
     const noResponse = gameContext?.noResponse ?? 0;
@@ -2222,20 +2259,6 @@ function DashboardView({
                     />
                 )}
             </div>
-
-            {leagueNotice && (
-                <div className="league-notice-banner">
-                    <div className="league-notice-banner-content">
-                        <span className="league-notice-banner-icon">📢</span>
-                        <div className="league-notice-banner-text">
-                            <strong className="league-notice-banner-title">{leagueNotice.title}</strong>
-                            {leagueNotice.message && (
-                                <p className="league-notice-banner-message">{leagueNotice.message}</p>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
@@ -2721,7 +2744,7 @@ function ScheduleView({
             {detailGame && (
                 <GameDetailModal
                     game={detailGame}
-                    attendance={mobileAttendanceByGame[detailGame.id]}
+                    key={detailGame.id}
                     onClose={() => setDetailGame(null)}
                     onMessageTeam={() => {
                          setDetailGame(null); 

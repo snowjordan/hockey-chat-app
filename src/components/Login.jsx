@@ -66,9 +66,8 @@ export default function Login({ accessDenied = false }) {
     setLoginError('')
 
     if (!trimmedEmail) {
-      setLoginError(
-        'Enter your email address first.'
-      ) 
+      setLoginError('Enter your email address first.') 
+      setLoginMessageType('error')
       return
     }
 
@@ -100,6 +99,7 @@ export default function Login({ accessDenied = false }) {
         'Unable to send the account email. Please try again.'
       )
 
+      setLoginMessageType('error')
       setSigningIn(false)
       return
     }
@@ -108,6 +108,7 @@ export default function Login({ accessDenied = false }) {
       'If this email belongs to a league member, an account email has been sent.'
     )
 
+    setLoginMessageType('success')
     setSigningIn(false)
   }
 
@@ -175,7 +176,11 @@ export default function Login({ accessDenied = false }) {
                 id="login-email"
                 type="email"
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => {
+                  setEmail(event.target.value)
+                  setLoginMessageType('error')
+                  setLoginError('')
+                }}
                 autoComplete="email"
                 disabled={signingIn}
                 required
@@ -208,7 +213,7 @@ export default function Login({ accessDenied = false }) {
                   className="account-help-link"
                   type="button"
                   onClick={requestAccountEmail}
-                  disabled={signingIn}
+                  disabled={signingIn || loginMessageType === 'success'}
                 >
                   Forgot password?
                 </button>
@@ -218,7 +223,7 @@ export default function Login({ accessDenied = false }) {
                   className="account-help-link"
                   type="button"
                   onClick={requestAccountEmail}
-                  disabled={signingIn}
+                  disabled={signingIn || loginMessageType === 'success'}
                 >
                   Set up my account
                 </button>
@@ -227,7 +232,7 @@ export default function Login({ accessDenied = false }) {
               {loginError && (
                 <p
                   className="login-message login-message-error"
-                  role="alert"
+                  role={loginMessageType === "error" ? "alert" : "status"}
                 >
                   {loginError}
                 </p>

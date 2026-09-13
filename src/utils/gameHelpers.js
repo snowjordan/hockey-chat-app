@@ -1,3 +1,6 @@
+import { supabase } from "../lib/supabaseClient";
+
+
 export const FEED_TYPE_LABELS = {
     announcement: "ANNOUNCEMENT",
     schedule_change: "Schedule",
@@ -90,21 +93,12 @@ export function isSubNeeded(status, subRequested) {
 }
 
 function formatGameDate(dateString) {
-    if (!dateString) return 'TBD';
+    const [year, month, day] = dateString.split("-").map(Number)
 
-    const [year, month, day] = dateString.split('-').map(Number);
-
-    if (!year || !month || !day) {
-        return dateString;
-    }
-
-    const date = new Date(year, month - 1, day);
-
-    return date.toLocaleDateString('en-US', {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric'
-    });
+    return new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+    }).format(new Date(year, month - 1, day))
 }
 
 function formatGameTime(timeString) {
@@ -193,4 +187,122 @@ export function getChatPrefill(type, ctx) {
         default:
             return "";
     }
+}
+
+export async function loadAttendanceSummaries(leagueName) {
+    const { data: games, error: gamesError } = await supabase
+        .from("games")
+        .select(`
+            id,
+            game_date,
+            home_team_id,
+            away_team_id,
+            home_team:home_team_id(name),
+            away_team:away_team_id(name)
+        `)
+        .gte("game_date", new Date().toISOString())
+        .order("game_date", { ascending: true })
+
+    if (gamesError) {
+        console.error(
+            "Unable to load games for attendance summary",
+            gamesError
+        )
+        return []
+    }
+
+    if (!games?.length) {
+        return []
+    }
+
+    const gameIds = games.map((game) => game.id)
+
+    const teamIds = [
+        ...new Set(
+            games.flatMap((game) => [
+                game.home_team_id,
+                game.away_team_id,
+            ])
+        ),
+    ]
+
+    const { data: members, error: membersError } = await supabase
+        .from("team_members")
+        .select("profile_id, team_id")
+        .in("team_id", teamIds)
+
+    if (membersError) {
+        console.error(
+            "Unable to load team members",
+            membersError
+        )
+        return []
+    }
+
+    const { data: rsvps, error: rsvpsError } = await supabase
+        .from("game_rsvps")
+        .select("game_id, profile_id, status")
+        .in("game_id", gameIds)
+        .eq("status", "going")
+
+    if (rsvpsError) {
+        console.error(
+            "Unable to load game RSVPs",
+            rsvpsError
+        )
+        return []
+    }
+
+    return games.map((game) => {
+        const homeProfileIds = new Set(
+            (members ?? [])
+                .filter(
+                    (member) =>
+                        member.team_id === game.home_team_id
+                )
+                .map((member) => member.profile_id)
+        )
+
+        const awayProfileIds = new Set(
+            (members ?? [])
+                .filter(
+                    (member) =>
+                        member.team_id === game.away_team_id
+                )
+                .map((member) => member.profile_id)
+        )
+
+        const gameRsvps = (rsvps ?? []).filter(
+            (rsvp) => rsvp.game_id === game.id
+        )
+
+        const homeGoing = gameRsvps.filter(
+            (rsvp) =>
+                homeProfileIds.has(rsvp.profile_id)
+        ).length
+
+        const awayGoing = gameRsvps.filter(
+            (rsvp) =>
+                awayProfileIds.has(rsvp.profile_id)
+        ).length
+
+        return {
+            id: `attendance-${game.id}`,
+            type: "attendance_update",
+            title: `${game.home_team.name} vs ${game.away_team.name}`,
+
+            message: `${game.home_team.name}: ${homeGoing} going · ${game.away_team.name}: ${awayGoing} going`,
+
+            homeGoing,
+            awayGoing,
+
+            homeTeamId: game.home_team_id,
+            awayTeamId: game.away_team_id,
+
+            date: formatGameDate(game.game_date),
+
+            relatedEntityType: "game",
+            relatedEntityId: game.id,
+        }
+    })
 }

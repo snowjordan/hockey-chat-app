@@ -26,6 +26,3 @@ dist-ssr
 .env
 .env.local
 .env.*.local
-
-#update for asdf controlled node version.
-.tool-versions
