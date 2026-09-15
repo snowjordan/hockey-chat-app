@@ -35,6 +35,7 @@ import SetPassword from './components/SetPassword';
 import AdminScheduleView from './components/admin/AdminScheduleView';
 import AdminProfilesView from './components/admin/AdminProfilesView';
 import AdminNoticeView from './components/admin/AdminNoticeView';
+import SavedTab from './components/SavedTab';
 
 
 const ADMIN_EMAILS = new Set([
@@ -469,13 +470,27 @@ function App() {
     useEffect(() => {
         let isMounted = true
         let authCheckNumber = 0
+        let authenticatedUserId
 
         async function processSession(nextSession) {
-            const currentCheck = ++authCheckNumber
+            if (!isMounted) return
 
-            if (!isMounted) {
+            const nextUserId = nextSession?.user?.id ?? null
+            // Supabase also emits sign-in events when browser focus returns.
+            // Refresh the token without tearing down the current user's tabs.
+            if (authenticatedUserId === nextUserId) {
+                setSession(nextSession)
                 return
             }
+            authenticatedUserId = nextUserId
+            const currentCheck = ++authCheckNumber
+            setActiveView("dashboard")
+            setSelectedTeam(null)
+            setSelectedPlayer(null)
+            setEditingPlayer(false)
+            setChatDraft("")
+            setAnnouncementFormOpen(false)
+            setAnnouncementDraft({ title: "", summary: "", message: "" })
 
             setSession(nextSession)
             setCurrentProfile(null)
@@ -1309,13 +1324,7 @@ function App() {
     
     const navigateTo = (view) => {
         setActiveView(view)
-        setEditingPlayer(false)
         setIsMobileNavOpen(false)
-
-        if (view !== "teams") {
-            setSelectedTeam(null)
-            setSelectedPlayer(null)
-        }
     }
 
     const openTeam = (team) => {
@@ -1465,8 +1474,8 @@ function App() {
         };
     }
 
-    const mainContent = (() => {
-        if (selectedPlayer && selectedTeam) {
+    const renderView = (view) => {
+        if (view === "teams" && selectedPlayer && selectedTeam) {
             const profile = selectedPlayer.profiles
 
             if (!profile?.id) {
@@ -1531,7 +1540,7 @@ function App() {
             )
         }
 
-        if (selectedTeam && activeView === "teams") {
+        if (selectedTeam && view === "teams") {
             return (
                 <TeamDetail
                     team={selectedTeam}
@@ -1570,7 +1579,7 @@ function App() {
             )
         }
 
-        switch (activeView) {
+        switch (view) {
             case "dashboard":
                 return (
                     <DashboardView
@@ -1726,7 +1735,7 @@ function App() {
             default:
                 return null
         }
-    })()
+    }
 
     if (isSetPasswordPage) {
         return <SetPassword />
@@ -1898,9 +1907,18 @@ function App() {
                     />
                 )}
 
-                <main className="main-content">{mainContent}</main>
+                <main className="main-content" key={session.user.id}>
+                    {[
+                        ...NAV_ITEMS.map((item) => item.id),
+                        ...(isAdmin ? ["admin-schedule", "admin-profiles", "admin-notice"] : []),
+                    ].map((view) => (
+                        <SavedTab key={view} active={activeView === view}>
+                            {() => renderView(view)}
+                        </SavedTab>
+                    ))}
+                </main>
 
-                {!selectedPlayer && (
+                {!(activeView === "teams" && selectedPlayer) && (
                     <TonightsRoster
                     game={upcomingGame}
                     myTeam={myTeam}
