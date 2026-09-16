@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
 import { loadAuthenticatedProfile } from "./lib/authHelpers.js";
+import { downloadScheduleIcs } from "./utils/calendarExport.js";
 import { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 import HockeyIcon from "./components/HockeyIcon.jsx";
 import {
@@ -2513,9 +2514,19 @@ function ScheduleView({
 
     return (
         <div className="page-view schedule-view">
-            <header className="page-header">
-                <h2>Schedule</h2>
-                <p className="page-subtitle">{games.length} games · South Suburban Sports Complex</p>
+            <header className="page-header schedule-page-header">
+                <div>
+                    <h2>Schedule</h2>
+                    <p className="page-subtitle">{games.length} games · South Suburban Sports Complex</p>
+                </div>
+                <button
+                    type="button"
+                    className="action-btn action-btn--secondary"
+                    onClick={() => downloadScheduleIcs(games, myTeam?.name)}
+                    disabled={games.length === 0}
+                >
+                    Export calendar (.ics)
+                </button>
             </header>
             <div className="desktop-schedule">
             <section className="content-card schedule-calendar">

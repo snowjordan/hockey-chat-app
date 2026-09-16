@@ -308,6 +308,12 @@ body {
   gap: 12px;
 }
 
+.admin-schedule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .admin-form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
@@ -389,6 +395,14 @@ body {
   font-size: var(--text-xl);
   font-weight: 700;
   color: var(--navy-900);
+}
+
+.schedule-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .page-subtitle {

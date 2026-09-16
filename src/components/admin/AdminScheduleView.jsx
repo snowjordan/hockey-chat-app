@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
+import { downloadScheduleIcs } from "../../utils/calendarExport.js";
 import { formatGameDate, formatGameTime } from "../../utils/scheduleHelpers";
 
 const EMPTY_FORM = {
@@ -136,13 +137,23 @@ export default function AdminScheduleView() {
                     <h2>Admin · Schedule</h2>
                     <p className="page-subtitle">{games.length} games</p>
                 </div>
-                <button
-                    type="button"
-                    className="action-btn action-btn--primary"
-                    onClick={openNew}
-                >
-                    + Add Game
-                </button>
+                <div className="admin-schedule-actions">
+                    <button
+                        type="button"
+                        className="action-btn action-btn--secondary"
+                        onClick={() => downloadScheduleIcs(games, "league")}
+                        disabled={games.length === 0}
+                    >
+                        Export calendar (.ics)
+                    </button>
+                    <button
+                        type="button"
+                        className="action-btn action-btn--primary"
+                        onClick={openNew}
+                    >
+                        + Add Game
+                    </button>
+                </div>
             </div>
 
             <section className="content-card">
