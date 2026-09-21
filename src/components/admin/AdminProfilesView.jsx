@@ -12,6 +12,35 @@ const EMPTY_NEW_PLAYER = {
 };
 
 const POSITIONS = ["forward", "defense", "goalie"];
+const alphabetical = new Intl.Collator(undefined, { sensitivity: "base" });
+
+function sortProfiles(profiles) {
+    return [...profiles].sort((a, b) => {
+        const teamA = a.team_members?.[0]?.teams?.name?.trim() ?? "";
+        const teamB = b.team_members?.[0]?.teams?.name?.trim() ?? "";
+        if (!teamA && teamB) return 1;
+        if (teamA && !teamB) return -1;
+        return alphabetical.compare(teamA, teamB)
+            || alphabetical.compare(a.full_name ?? "", b.full_name ?? "");
+    });
+}
+
+function formatLastLogin(login) {
+    if (!login) return "Unavailable";
+    if (!login.has_account) return "No account";
+    if (!login.last_sign_in_at) return "Never";
+    const date = new Date(login.last_sign_in_at);
+    return Number.isNaN(date.getTime()) ? "Unavailable" : date.toLocaleString(undefined, {
+        dateStyle: "medium", timeStyle: "short", timeZoneName: undefined,
+    });
+}
+
+function saveErrorMessage(error) {
+    if (error?.status === 0 || /failed to fetch|networkerror/i.test(error?.message ?? "")) {
+        return "The connection to the league database failed. Check the Players list before trying again; the player may already have been saved.";
+    }
+    return error?.message ?? "Could not save the player. Please try again.";
+}
 
 async function fetchProfiles() {
     const { data, error } = await supabase
@@ -29,12 +58,14 @@ async function fetchProfiles() {
             )
         `)
         .order("full_name");
-    return error ? [] : (data ?? []);
+    return error ? [] : sortProfiles(data ?? []);
 }
 
 export default function AdminProfilesView() {
     const [profiles, setProfiles] = useState([]);
     const [teams, setTeams] = useState([]);
+    const [logins, setLogins] = useState({});
+    const [loginError, setLoginError] = useState("");
     const [loading, setLoading] = useState(true);
     const [editingProfile, setEditingProfile] = useState(null);
     const [newPlayer, setNewPlayer] = useState(null);
@@ -43,11 +74,17 @@ export default function AdminProfilesView() {
 
     useEffect(() => {
         async function load() {
-            const [profileData, teamsResult] = await Promise.all([
+            const [profileData, teamsResult, loginResult] = await Promise.all([
                 fetchProfiles(),
                 supabase.from("teams").select("id, name").order("name"),
+                supabase.rpc("admin_player_last_logins"),
             ]);
             setProfiles(profileData);
+            if (loginResult.error) {
+                setLoginError("Recent login information could not be loaded. Player details are still available.");
+            } else {
+                setLogins(Object.fromEntries((loginResult.data ?? []).map((login) => [login.profile_id, login])));
+            }
             if (!teamsResult.error) setTeams(teamsResult.data ?? []);
             setLoading(false);
         }
@@ -86,11 +123,11 @@ export default function AdminProfilesView() {
                 email: newPlayer.email.trim(),
                 phone: newPlayer.phone.trim(),
             })
-            .select()
+            .select("id")
             .single();
 
         if (profileError) {
-            setSaveError(profileError.message);
+            setSaveError(saveErrorMessage(profileError));
             setSaving(false);
             return;
         }
@@ -106,7 +143,7 @@ export default function AdminProfilesView() {
                 });
 
             if (memberError) {
-                setSaveError(`Profile created but team assignment failed: ${memberError.message}`);
+                setSaveError(`Profile created but team assignment failed: ${saveErrorMessage(memberError)}`);
                 setSaving(false);
                 return;
             }
@@ -156,7 +193,8 @@ export default function AdminProfilesView() {
                 </button>
             </div>
 
-            <section className="content-card">
+            {loginError && <p className="admin-save-error" role="status">{loginError}</p>}
+            <section className="content-card" style={{ overflowX: "auto" }}>
                 <table className="admin-table">
                     <thead>
                         <tr>
@@ -166,13 +204,14 @@ export default function AdminProfilesView() {
                             <th>Team</th>
                             <th>Position</th>
                             <th>#</th>
+                            <th>Most recent login</th>
                             <th></th>
                         </tr>
                     </thead>
                     <tbody>
                         {profiles.length === 0 && (
                             <tr>
-                                <td colSpan={7} className="admin-table-empty">
+                                <td colSpan={8} className="admin-table-empty">
                                     No profiles found.
                                 </td>
                             </tr>
@@ -192,6 +231,9 @@ export default function AdminProfilesView() {
                                     <td>{member?.teams?.name ?? "—"}</td>
                                     <td>{member?.position ?? "—"}</td>
                                     <td>{member?.jersey_number ?? "—"}</td>
+                                    <td className="admin-table-nowrap" title="Displayed in your local time zone">
+                                        {formatLastLogin(logins[profile.id])}
+                                    </td>
                                     <td className="admin-table-actions">
                                         <button
                                             type="button"
