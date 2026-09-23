@@ -430,6 +430,7 @@ function App() {
     const [currentProfile, setCurrentProfile] = useState(null);
     const [accessDenied, setAccessDenied] = useState(false);
     const [activeView, setActiveView] = useState("dashboard");
+    const [scheduleTargetGame, setScheduleTargetGame] = useState(null);
     const [selectedTeam, setSelectedTeam] = useState(null);
     const [editingPlayer, setEditingPlayer] = useState(false);
     const [selectedPlayer, setSelectedPlayer] = useState(null);
@@ -1364,6 +1365,7 @@ function App() {
     }
     
     const navigateTo = (view) => {
+        setScheduleTargetGame(null);
         setActiveView(view)
         setIsMobileNavOpen(false)
     }
@@ -1639,7 +1641,10 @@ function App() {
                         }
                         onPromptNoResponse={promptNoResponse}
                         onOpenTeam={openTeam}
-                        onViewSchedule={() => navigateTo("schedule")}
+                        onViewSchedule={(game) => {
+                            navigateTo("schedule");
+                            setScheduleTargetGame(game ?? upcomingGame);
+                        }}
                         feedItems={feedItems}
                         expandedFeedId={expandedFeedId}
                         onToggleFeed={setExpandedFeedId}
@@ -1655,6 +1660,7 @@ function App() {
             case "schedule":
                 return (
                     <ScheduleView
+                        initialRsvpGame={scheduleTargetGame}
                         currentTeamId={currentTeamId}
                         myTeam={myTeam}
                         onMessageTeam={() =>
@@ -2322,7 +2328,7 @@ function DashboardView({
                                                                 type="button"
                                                                 onClick={() => {
                                                                     setGameActionsOpen(false);
-                                                                    onViewSchedule();
+                                                                    onViewSchedule(game);
                                                                 }}
                                                             >
                                                                 View Schedule
@@ -2476,6 +2482,7 @@ function TeamCard({ team, games, teams, onSelect, compact = false }) {
 }
 
 function ScheduleView({
+    initialRsvpGame = null,
     myTeam,
     currentTeamId,
     onMessageTeam,
@@ -2486,8 +2493,21 @@ function ScheduleView({
 }) {
     const [games, setGames] = useState([])
     const [detailGame, setDetailGame] = useState(null);
-    const [rsvpGameId, setRsvpGameId] = useState(null);
-    const [calendarDate, setCalendarDate] = useState(new Date());
+    const [rsvpGameId, setRsvpGameId] = useState(initialRsvpGame?.id ?? null);
+    const [calendarDate, setCalendarDate] = useState(() => {
+        if (!initialRsvpGame?.game_date) return new Date();
+        const [year, month, day] = initialRsvpGame.game_date.split("-").map(Number);
+        return new Date(year, month - 1, day);
+    });
+
+    useEffect(() => {
+        if (!initialRsvpGame || !games.length) return;
+        const popovers = document.querySelectorAll(
+            ".schedule-calendar-rsvp-popover, .mobile-schedule-rsvp-popover"
+        );
+        const visiblePopover = Array.from(popovers).find((element) => element.getClientRects().length > 0);
+        visiblePopover?.scrollIntoView({ block: "nearest" });
+    }, [initialRsvpGame, games]);
 
     const year = calendarDate.getFullYear();
     const month = calendarDate.getMonth();
