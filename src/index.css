@@ -4477,3 +4477,11 @@ button {
         gap: 8px;
     }
 }
+
+.dashboard-attendance-counts {
+  font-weight: 400;
+}
+
+.dashboard-attendance-counts strong {
+  font-weight: 800;
+}

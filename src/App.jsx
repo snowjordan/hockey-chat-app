@@ -2133,14 +2133,13 @@ function DashboardView({
                                 </p>
                             </div>
                             <div className="next-game-col next-game-col--attendance">
-                                <span className="attendance-hero-number">{gameContext.skatersGoing} skaters</span>
+                                <span className="attendance-hero-number dashboard-attendance-counts">{gameContext.skatersGoing} skaters · <strong>{gameContext.goaliesGoing} {gameContext.goaliesGoing === 1 ? "goalie" : "goalies"}</strong></span>
                                 {attendanceDetail && (
                                     <p className="attendance-detail-line">{attendanceDetail}</p>
                                 )}
-                                <p className="attendance-status-line">
-                                    <strong>{gameContext.goaliesGoing} {gameContext.goaliesGoing === 1 ? "goalie" : "goalies"}</strong>
-                                    {gameContext.subsNeeded && ` · ${subStatus}`}
-                                </p>
+                                {gameContext.subsNeeded && (
+                                    <p className="attendance-status-line">{subStatus}</p>
+                                )}
                             </div>
                             <div className="next-game-col next-game-col--actions">
                                 <span className="col-label">Your Status</span>
@@ -2221,13 +2220,9 @@ function DashboardView({
                                         </div>
 
                                         <div className="next-game-col next-game-col--attendance">
-                                            <span className="attendance-hero-number">
-                                                {context.skatersGoing} skaters
+                                            <span className="attendance-hero-number dashboard-attendance-counts">
+                                                {context.skatersGoing} skaters · <strong>{context.goaliesGoing} {context.goaliesGoing === 1 ? "goalie" : "goalies"}</strong>
                                             </span>
-
-                                            <p className="attendance-status-line">
-                                                <strong>{context.goaliesGoing} {context.goaliesGoing === 1 ? "goalie" : "goalies"}</strong>
-                                            </p>
                                         </div>
 
                                         <div className="next-game-col next-game-col--actions">
