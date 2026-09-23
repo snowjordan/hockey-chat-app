@@ -1639,6 +1639,7 @@ function App() {
                         }
                         onPromptNoResponse={promptNoResponse}
                         onOpenTeam={openTeam}
+                        onViewSchedule={() => navigateTo("schedule")}
                         feedItems={feedItems}
                         expandedFeedId={expandedFeedId}
                         onToggleFeed={setExpandedFeedId}
@@ -2133,6 +2134,7 @@ function DashboardView({
     onMessageTeam,
     onPromptNoResponse,
     onOpenTeam,
+    onViewSchedule,
     feedItems,
     expandedFeedId,
     onToggleFeed,
@@ -2198,6 +2200,15 @@ function DashboardView({
 
                                         {gameActionsOpen && (
                                             <div className="game-actions-menu">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setGameActionsOpen(false);
+                                                        onViewSchedule();
+                                                    }}
+                                                >
+                                                    View Schedule
+                                                </button>
                                                 <button
                                                     type="button"
                                                     onClick={() => {
@@ -2307,6 +2318,15 @@ function DashboardView({
 
                                                     {gameActionsOpen && (
                                                         <div className="game-actions-menu">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setGameActionsOpen(false);
+                                                                    onViewSchedule();
+                                                                }}
+                                                            >
+                                                                View Schedule
+                                                            </button>
                                                             <button
                                                                 type="button"
                                                                 onClick={() => {

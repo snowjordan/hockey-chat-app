@@ -4494,17 +4494,29 @@ button {
   color: var(--steel-500);
 }
 
+.game-detail-modal {
+  width: min(840px, 100%);
+}
+
 .game-detail-rosters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 24px;
   padding: 0 30px 20px;
+}
+
+.game-detail-rosters > h4,
+.game-detail-rosters > p {
+  grid-column: 1 / -1;
+}
+
+.game-detail-team-roster {
+  min-width: 0;
 }
 
 .game-detail-rosters h4 {
   margin: 0 0 16px;
   font-size: var(--text-md);
-}
-
-.game-detail-team-roster + .game-detail-team-roster {
-  margin-top: 24px;
 }
 
 .game-detail-team-roster h5 {
@@ -4515,4 +4527,14 @@ button {
 .game-detail-team-roster .rail-roster-list {
   max-height: none;
   overflow: visible;
+}
+
+@media (max-width: 600px) {
+  .game-detail-rosters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .game-detail-team-roster + .game-detail-team-roster {
+    margin-top: 24px;
+  }
 }
