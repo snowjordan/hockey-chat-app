@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
 import { loadAuthenticatedProfile } from "./lib/authHelpers.js";
 import { downloadScheduleIcs } from "./utils/calendarExport.js";
-import { IconChevronDown, IconChevronRight } from "@tabler/icons-react";
+import { IconCheck, IconX, IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 import HockeyIcon from "./components/HockeyIcon.jsx";
 import {
     FEED_TYPE_LABELS,
@@ -246,7 +246,7 @@ function GameDetailModal({
                 const [membersResult, rsvpsResult] = await Promise.all([
                     supabase
                         .from("team_members")
-                        .select("profile_id, team_id, position")
+                        .select("profile_id, team_id, position, profiles(id, full_name)")
                         .in("team_id", teamIds),
                     supabase
                         .from("game_rsvps")
@@ -275,13 +275,19 @@ function GameDetailModal({
                     );
                     return {
                         going: new Set(goingMembers.map((member) => member.profile_id)).size,
-                        goalie: goalieIds.size > 0 ? "Has" : "Needed",
-                        subs: skaterIds.size >= 10 ? "No subs needed" : "Subs needed",
+                        goalie: goalieIds.size > 0,
+                        subs: skaterIds.size >= 10 ? "" : "Subs needed",
+                        roster: (membersResult.data ?? [])
+                            .filter((member) => member.team_id === teamId)
+                            .sort((a, b) => (a.profiles?.full_name ?? "").localeCompare(b.profiles?.full_name ?? "")),
                     };
                 };
 
                 if (!cancelled) {
                     setAttendanceState({
+                        rsvpsByProfile: Object.fromEntries(
+                            (rsvpsResult.data ?? []).map((rsvp) => [rsvp.profile_id, rsvp.status])
+                        ),
                         home: getTeamStatus(game.home_team_id),
                         away: getTeamStatus(game.away_team_id),
                     });
@@ -301,6 +307,15 @@ function GameDetailModal({
         if (attendanceState.error) return "Unavailable";
         const value = attendanceState[side]?.[field];
         if (value == null) return "Loading...";
+        if (field === "goalie") {
+            const Icon = value ? IconCheck : IconX;
+            const label = value ? "Goalie available" : "Goalie needed";
+            return (
+                <span className={value ? "text-going" : "text-out"} role="img" aria-label={label} title={label}>
+                    <Icon size={22} stroke={3} aria-hidden="true" />
+                </span>
+            );
+        }
         return field === "going" ? `${value} going` : value;
     };
 
@@ -341,8 +356,8 @@ function GameDetailModal({
                 <div className="game-team-comparison">
                     <div className="game-team-comparison-header">
                         <span></span>
-                        <strong>{home}</strong>
-                        <strong>{away}</strong>
+                        <strong><span className="game-team-side">Home</span>{home}</strong>
+                        <strong><span className="game-team-side">Away</span>{away}</strong>
                     </div>
 
                     <div className="game-team-comparison-row">
@@ -363,6 +378,29 @@ function GameDetailModal({
                         <strong>{statusLabel("away", "subs")}</strong>
                     </div>
                 </div>
+
+                <section className="game-detail-rosters" aria-label="Team rosters">
+                    <h4>Team rosters</h4>
+                    {!attendanceState ? (
+                        <p role="status">Loading rosters...</p>
+                    ) : attendanceState.error ? (
+                        <p role="status">Unable to load rosters.</p>
+                    ) : (
+                        [["home", home, "Home"], ["away", away, "Away"]].map(([side, name, label]) => (
+                            <section className="game-detail-team-roster" key={side} aria-label={`${label}: ${name} roster`}>
+                                <h5>{label}: {name}</h5>
+                                {attendanceState[side].roster.length > 0 ? (
+                                    <GameRosterList
+                                        players={attendanceState[side].roster}
+                                        rsvpsByProfile={attendanceState.rsvpsByProfile}
+                                    />
+                                ) : (
+                                    <p>No players rostered.</p>
+                                )}
+                            </section>
+                        ))
+                    )}
+                </section>
 
                 <footer className="modal-actions">
                     <button
@@ -1942,13 +1980,11 @@ function GameRosterList({
     return (
         <ul className="rail-roster-list">
             {players.map((player) => {
-                const profile = player.profiles ?? null
-
                 const playerName = player.profiles?.full_name ?? player.name ?? "Unknown Player"
 
                 const profileId = player.profile_id ?? player.profiles?.id
 
-                const status = rsvpsByProfile[profile.id] ?? "pending"
+                const status = rsvpsByProfile[profileId] ?? "pending"
 
                 const initials = playerName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()
 

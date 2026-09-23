@@ -82,7 +82,7 @@ export function rsvpLabel(rsvp) {
 
 export function formatSubStatus(status, subRequested) {
     if (subRequested) return "Need 1 sub";
-    if (!status || status === "None" || status === "No subs needed") return "No subs needed";
+    if (!status || status === "None" || status === "No subs needed") return "";
     return status;
 }
 

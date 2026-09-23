@@ -4485,3 +4485,34 @@ button {
 .dashboard-attendance-counts strong {
   font-weight: 800;
 }
+
+.game-team-side {
+  display: block;
+  margin-bottom: 4px;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--steel-500);
+}
+
+.game-detail-rosters {
+  padding: 0 30px 20px;
+}
+
+.game-detail-rosters h4 {
+  margin: 0 0 16px;
+  font-size: var(--text-md);
+}
+
+.game-detail-team-roster + .game-detail-team-roster {
+  margin-top: 24px;
+}
+
+.game-detail-team-roster h5 {
+  margin: 0 0 8px;
+  font-size: var(--text-sm);
+}
+
+.game-detail-team-roster .rail-roster-list {
+  max-height: none;
+  overflow: visible;
+}
