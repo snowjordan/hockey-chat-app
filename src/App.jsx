@@ -1005,6 +1005,7 @@ function App() {
         myTeam,
         teams,
         attendance: teamAttendance,
+        rsvpsByProfile,
         subRequested,
         userRsvp,
         currentUserId,
@@ -1213,6 +1214,7 @@ function App() {
                 attendance,
                 subRequested,
                 userRsvp: userRsvpForGame,
+                rsvpsByProfile: mobileRsvpsByProfileByGame[game.id] ?? {},
                 currentUserId
             });
 
@@ -2136,7 +2138,7 @@ function DashboardView({
                                     <p className="attendance-detail-line">{attendanceDetail}</p>
                                 )}
                                 <p className="attendance-status-line">
-                                    {gameContext.goalieStatus}
+                                    <strong>{gameContext.goaliesGoing} {gameContext.goaliesGoing === 1 ? "goalie" : "goalies"}</strong>
                                     {gameContext.subsNeeded && ` · ${subStatus}`}
                                 </p>
                             </div>
@@ -2224,7 +2226,7 @@ function DashboardView({
                                             </span>
 
                                             <p className="attendance-status-line">
-                                                {context.goalieStatus}
+                                                <strong>{context.goaliesGoing} {context.goaliesGoing === 1 ? "goalie" : "goalies"}</strong>
                                             </p>
                                         </div>
 

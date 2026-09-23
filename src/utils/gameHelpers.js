@@ -61,8 +61,14 @@ export function groupRosterByRsvp(players, userRsvp, currentUserId) {
     return groups;
 }
 
+function isGoalie(player) {
+    return ["g", "goalie", "goaltender"].includes(
+        (player.position ?? "").trim().toLowerCase()
+    );
+}
+
 export function countFieldSkaters(roster = []) {
-    return roster.filter((player) => player.position !== "goalie").length;
+    return roster.filter((player) => !isGoalie(player)).length;
 }
 
 export function countNoResponse(roster, userRsvp, currentUserId) {
@@ -120,7 +126,7 @@ function formatGameTime(timeString) {
 }
 
 
-export function buildNextGameContext({ game, myTeam, teams, attendance, subRequested, userRsvp, currentUserId }) {
+export function buildNextGameContext({ game, myTeam, teams, attendance, subRequested, userRsvp, currentUserId, rsvpsByProfile = {} }) {
     if (!game || !myTeam) return null;
 
     const isHome = game.home_team_id === myTeam.id;
@@ -128,6 +134,15 @@ export function buildNextGameContext({ game, myTeam, teams, attendance, subReque
     const matchup = `${game.home_team_name} vs ${game.away_team_name}`;
     const rink = `${game.location_name ?? ""}${game.rink ? ` · ${game.rink}` : ""}`;
     const going = attendance?.going ?? 0;
+    const goaliesGoing = new Set(
+        (myTeam.roster ?? []).filter((player) => {
+            const profileId = player.profile_id ?? player.profiles?.id ?? player.id;
+            const status = profileId === currentUserId
+                ? userRsvp
+                : rsvpsByProfile[profileId];
+            return isGoalie(player) && status === "going";
+        }).map((player) => player.profile_id ?? player.profiles?.id ?? player.id)
+    ).size;
     const maybe = attendance?.maybe ?? 0;
     const out = attendance?.out ?? 0;
     const noResponse =
@@ -142,7 +157,8 @@ export function buildNextGameContext({ game, myTeam, teams, attendance, subReque
         date: formatGameDate(game.game_date),
         time: formatGameTime(game.start_time),
         rink,
-        skatersGoing: going,
+        skatersGoing: Math.max(0, going - goaliesGoing),
+        goaliesGoing,
         maybe,
         out,
         noResponse,
