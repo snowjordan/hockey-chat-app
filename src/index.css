@@ -4057,7 +4057,8 @@ button {
   min-width: 0;
 }
 
-.mobile-roster-modal .roster-player-avatar {
+.mobile-roster-modal .roster-player-avatar,
+.game-detail-roster-mobile .roster-player-avatar {
   width: 38px;
   height: 38px;
   flex: 0 0 38px;
@@ -4536,5 +4537,41 @@ button {
 
   .game-detail-team-roster + .game-detail-team-roster {
     margin-top: 24px;
+  }
+}
+
+.game-detail-roster-mobile {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .game-detail-roster-desktop {
+    display: none;
+  }
+
+  .game-detail-roster-mobile {
+    display: block;
+  }
+
+  .game-detail-rosters {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0 20px 20px;
+  }
+
+  .game-detail-team-roster + .game-detail-team-roster {
+    margin-top: 24px;
+  }
+
+  .game-detail-modal {
+    max-height: 80vh;
+    border-radius: 18px;
+  }
+
+  .game-detail-roster-mobile .rail-roster-list {
+    gap: 0;
+  }
+
+  .game-detail-roster-mobile .mobile-roster-player-info strong {
+    overflow-wrap: anywhere;
   }
 }

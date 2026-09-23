@@ -390,10 +390,21 @@ function GameDetailModal({
                             <section className="game-detail-team-roster" key={side} aria-label={`${label}: ${name} roster`}>
                                 <h5>{label}: {name}</h5>
                                 {attendanceState[side].roster.length > 0 ? (
-                                    <GameRosterList
-                                        players={attendanceState[side].roster}
-                                        rsvpsByProfile={attendanceState.rsvpsByProfile}
-                                    />
+                                    <>
+                                        <div className="game-detail-roster-desktop">
+                                            <GameRosterList
+                                                players={attendanceState[side].roster}
+                                                rsvpsByProfile={attendanceState.rsvpsByProfile}
+                                            />
+                                        </div>
+                                        <div className="game-detail-roster-mobile">
+                                            <GameRosterList
+                                                players={attendanceState[side].roster}
+                                                rsvpsByProfile={attendanceState.rsvpsByProfile}
+                                                variant="mobile"
+                                            />
+                                        </div>
+                                    </>
                                 ) : (
                                     <p>No players rostered.</p>
                                 )}
@@ -1643,7 +1654,7 @@ function App() {
                         onOpenTeam={openTeam}
                         onViewSchedule={(game) => {
                             navigateTo("schedule");
-                            setScheduleTargetGame(game ?? upcomingGame);
+                            setScheduleTargetGame({ ...(game ?? upcomingGame) });
                         }}
                         feedItems={feedItems}
                         expandedFeedId={expandedFeedId}
@@ -1660,7 +1671,7 @@ function App() {
             case "schedule":
                 return (
                     <ScheduleView
-                        initialRsvpGame={scheduleTargetGame}
+                        requestedDetailGame={scheduleTargetGame}
                         currentTeamId={currentTeamId}
                         myTeam={myTeam}
                         onMessageTeam={() =>
@@ -2482,7 +2493,7 @@ function TeamCard({ team, games, teams, onSelect, compact = false }) {
 }
 
 function ScheduleView({
-    initialRsvpGame = null,
+    requestedDetailGame = null,
     myTeam,
     currentTeamId,
     onMessageTeam,
@@ -2492,22 +2503,26 @@ function ScheduleView({
     mobileAttendanceByGame,
 }) {
     const [games, setGames] = useState([])
-    const [detailGame, setDetailGame] = useState(null);
-    const [rsvpGameId, setRsvpGameId] = useState(initialRsvpGame?.id ?? null);
+    const [detailGame, setDetailGame] = useState(requestedDetailGame);
+    const [rsvpGameId, setRsvpGameId] = useState(null);
     const [calendarDate, setCalendarDate] = useState(() => {
-        if (!initialRsvpGame?.game_date) return new Date();
-        const [year, month, day] = initialRsvpGame.game_date.split("-").map(Number);
+        if (!requestedDetailGame?.game_date) return new Date();
+        const [year, month, day] = requestedDetailGame.game_date.split("-").map(Number);
         return new Date(year, month - 1, day);
     });
 
-    useEffect(() => {
-        if (!initialRsvpGame || !games.length) return;
-        const popovers = document.querySelectorAll(
-            ".schedule-calendar-rsvp-popover, .mobile-schedule-rsvp-popover"
-        );
-        const visiblePopover = Array.from(popovers).find((element) => element.getClientRects().length > 0);
-        visiblePopover?.scrollIntoView({ block: "nearest" });
-    }, [initialRsvpGame, games]);
+    const [lastDetailRequest, setLastDetailRequest] = useState(requestedDetailGame);
+
+    // SavedTab keeps Schedule mounted, so handle every new navigation request.
+    if (requestedDetailGame !== lastDetailRequest) {
+        setLastDetailRequest(requestedDetailGame);
+        if (requestedDetailGame) {
+            setDetailGame(requestedDetailGame);
+            setRsvpGameId(null);
+            const [year, month, day] = requestedDetailGame.game_date.split("-").map(Number);
+            setCalendarDate(new Date(year, month - 1, day));
+        }
+    }
 
     const year = calendarDate.getFullYear();
     const month = calendarDate.getMonth();
