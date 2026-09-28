@@ -41,6 +41,14 @@ export function filterGamesForTeam(games = [], teamId) {
     );
 }
 
+// Compare calendar dates, not UTC timestamps: keep games through their game day.
+export function filterUpcomingGamesForTeam(games, teamId, today = formatDateKey(new Date())) {
+    return filterGamesForTeam(games, teamId)
+        .filter((game) => typeof game.game_date === 'string' && game.game_date >= today)
+        .sort((a, b) => a.game_date.localeCompare(b.game_date)
+            || (a.start_time ?? '').localeCompare(b.start_time ?? ''));
+}
+
 export function isValidRsvpStatus(status) {
     return RSVP_STATUSES.includes(status);
 }

@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabaseClient'
 
 export default function ProfileEditor({ profile, onBack, onSaved }) {
   const [industries, setIndustries] = useState([])
-  const [teamMember, setTeamMember] = useState(null)
+  const [teamLoadError, setTeamLoadError] = useState('')
 
   const [teams, setTeams] = useState([])
   const [selectedSubTeamIds, setSelectedSubTeamIds] = useState([])
@@ -17,13 +17,15 @@ export default function ProfileEditor({ profile, onBack, onSaved }) {
     phone: profile?.phone ?? '',
     notes: profile?.notes ?? '',
 
-    industry_id: '',
+    industry_name: '',
     company_name: '',
     description: '',
     is_available_for_work: true,
     linkedin_url: '',
     website_url: '',
 
+    main_team_id: '',
+    active_team_id: '',
     jersey_number: '',
     position: '',
   })
@@ -42,6 +44,7 @@ export default function ProfileEditor({ profile, onBack, onSaved }) {
         teamMemberResult,
         teamsResult,
         subPreferencesResult,
+        profileResult,
       ] = await Promise.all([
         supabase
           .from('industries')
@@ -53,6 +56,8 @@ export default function ProfileEditor({ profile, onBack, onSaved }) {
           .select(`
             id,
             industry_id,
+            custom_industry,
+            industries (name),
             company_name,
             description,
             is_available_for_work,
@@ -77,6 +82,7 @@ export default function ProfileEditor({ profile, onBack, onSaved }) {
           .from('sub_team_preferences')
           .select('team_id')
           .eq('profile_id', profile.id),
+        supabase.from('profiles').select('active_team_id').eq('id', profile.id).single(),
       ])
 
       if (industriesResult.error) {
@@ -98,7 +104,7 @@ export default function ProfileEditor({ profile, onBack, onSaved }) {
 
         setForm((current) => ({
           ...current,
-          industry_id: businessData.industry_id ?? '',
+          industry_name: businessData.custom_industry ?? businessData.industries?.name ?? '',
           company_name: businessData.company_name ?? '',
           description: businessData.description ?? '',
           is_available_for_work:
@@ -116,10 +122,10 @@ export default function ProfileEditor({ profile, onBack, onSaved }) {
       } else if (teamMemberResult.data) {
         const teamMemberData = teamMemberResult.data
 
-        setTeamMember(teamMemberData)
 
         setForm((current) => ({
           ...current,
+          main_team_id: String(teamMemberData.team_id),
           jersey_number: teamMemberData.jersey_number ?? '',
           position: teamMemberData.position ?? '',
         }))
@@ -142,11 +148,19 @@ export default function ProfileEditor({ profile, onBack, onSaved }) {
       } else {
         const selectedIds = (
           subPreferencesResult.data ?? []
-        ).map((preference) => preference.team_id)
+        ).map((preference) => String(preference.team_id))
 
         setSelectedSubTeamIds(selectedIds)
       }
 
+      if (teamMemberResult.error || teamsResult.error || subPreferencesResult.error || profileResult.error) {
+        setTeamLoadError('Unable to load team settings. Reload before saving.')
+      } else {
+        setTeamLoadError('')
+        setForm((current) => ({ ...current,
+          active_team_id: String(profileResult.data.active_team_id ?? teamMemberResult.data?.team_id ?? ''),
+        }))
+      }
       setSubPreferencesLoading(false)
     }
 
@@ -182,59 +196,16 @@ export default function ProfileEditor({ profile, onBack, onSaved }) {
   }
 
   function toggleSubTeam(teamId) {
+    if (selectedSubTeamIds.includes(teamId) && form.active_team_id === teamId) {
+      updateField('active_team_id', form.main_team_id)
+    }
     setSelectedSubTeamIds((currentIds) => {
       if (currentIds.includes(teamId)) {
-        return currentIds.filter(
-          (selectedId) => selectedId !== teamId
-        )
+        return currentIds.filter((selectedId) => selectedId !== teamId)
       }
 
       return [...currentIds, teamId]
     })
-  }
-
-  async function saveSubTeamPreferences() {
-    const { error: deleteError } = await supabase
-      .from('sub_team_preferences')
-      .delete()
-      .eq('profile_id', profile.id)
-
-    if (deleteError) {
-      console.error(
-        'Error removing previous sub-team preferences:',
-        deleteError
-      )
-
-      return {
-        error: deleteError,
-      }
-    }
-
-    if (selectedSubTeamIds.length === 0) {
-      return {
-        error: null,
-      }
-    }
-
-    const preferenceRows = selectedSubTeamIds.map((teamId) => ({
-      profile_id: profile.id,
-      team_id: teamId,
-    }))
-
-    const { error: insertError } = await supabase
-      .from('sub_team_preferences')
-      .insert(preferenceRows)
-
-    if (insertError) {
-      console.error(
-        'Error saving sub-team preferences:',
-        insertError
-      )
-    }
-
-    return {
-      error: insertError,
-    }
   }
 
   async function handleSave() {
@@ -249,8 +220,6 @@ export default function ProfileEditor({ profile, onBack, onSaved }) {
 
     setSaving(true)
 
-    const { data: adminResult, error: adminError } =
-      await supabase.rpc('is_league_admin')
       
     const { data: updatedProfile, error: profileError } =
       await supabase
@@ -273,39 +242,38 @@ export default function ProfileEditor({ profile, onBack, onSaved }) {
       return
     }
 
-    if (teamMember?.id) {
-      const { error: teamMemberError } = await supabase
-        .from('team_members')
-        .update({
-          jersey_number: form.jersey_number
-            ? Number(form.jersey_number)
-            : null,
-          position: form.position || null,
-        })
-        .eq('id', teamMember.id)
-
-      if (teamMemberError) {
-        console.error(
-          'Error saving team information:',
-          teamMemberError
-        )
-
-        alert(
-          'Profile saved, but team information could not be saved.'
-        )
-
-        setSaving(false)
-        return
-      }
+    const spareTeamIds = selectedSubTeamIds.filter((id) => id !== form.main_team_id)
+    const activeTeamId = form.active_team_id && [form.main_team_id, ...spareTeamIds].includes(form.active_team_id)
+      ? form.active_team_id : form.main_team_id || spareTeamIds[0] || ''
+    const { error: teamError } = await supabase.rpc('save_player_teams', {
+      p_profile_id: String(profile.id),
+      p_main_team_id: form.main_team_id || null,
+      p_spare_team_ids: spareTeamIds,
+      p_active_team_id: activeTeamId || null,
+      p_jersey_number: form.jersey_number ? Number(form.jersey_number) : null,
+      p_position: form.position || null,
+    })
+    if (teamError) {
+      console.error('Error saving team settings:', teamError)
+      alert('Profile saved, but team settings could not be saved. Please try again.')
+      setSaving(false)
+      return
     }
+    updatedProfile.active_team_id = activeTeamId || null
 
-    if (form.industry_id) {
+    const industryName = form.industry_name.trim()
+    const selectedIndustry = industries.find(
+      (industry) => industry.name.toLowerCase() === industryName.toLowerCase()
+    )
+
+    {
       const { error: businessError } = await supabase
         .from('profile_business_listings')
         .upsert(
           {
             profile_id: profile.id,
-            industry_id: form.industry_id,
+            industry_id: selectedIndustry?.id ?? null,
+            custom_industry: selectedIndustry ? null : industryName || null,
             company_name: form.company_name.trim() || null,
             description: form.description.trim() || null,
             is_available_for_work: form.is_available_for_work,
@@ -331,18 +299,6 @@ export default function ProfileEditor({ profile, onBack, onSaved }) {
         setSaving(false)
         return
       }
-    }
-
-    const { error: subPreferencesError } =
-      await saveSubTeamPreferences()
-
-    if (subPreferencesError) {
-      alert(
-        'Profile saved, but sub-team selections could not be saved.'
-      )
-
-      setSaving(false)
-      return
     }
 
     setSaving(false)
@@ -422,6 +378,28 @@ export default function ProfileEditor({ profile, onBack, onSaved }) {
 
           <div className="profile-form-grid">
             <label className="form-field">
+              <span>Main team</span>
+              <select value={form.main_team_id} onChange={(event) => {
+                const teamId = event.target.value
+                updateField('main_team_id', teamId)
+                setSelectedSubTeamIds((ids) => ids.filter((id) => id !== teamId))
+                updateField('active_team_id', teamId)
+              }}>
+                <option value="">No main team</option>
+                {teams.map((team) => <option key={team.id} value={String(team.id)}>{team.name}</option>)}
+              </select>
+            </label>
+            <label className="form-field">
+              <span>Viewing team</span>
+              <select value={form.active_team_id} onChange={(event) => updateField('active_team_id', event.target.value)}>
+                <option value="">Use main team</option>
+                {teams.filter((team) => String(team.id) === form.main_team_id || selectedSubTeamIds.includes(String(team.id))).map((team) => (
+                  <option key={team.id} value={String(team.id)}>{team.name}{String(team.id) === form.main_team_id ? ' (Main)' : ' (Spare)'}</option>
+                ))}
+              </select>
+              <small>Choose whose schedule and tonight's roster you want to see.</small>
+            </label>
+            <label className="form-field">
               <span>Jersey Number</span>
 
               <input
@@ -459,11 +437,10 @@ export default function ProfileEditor({ profile, onBack, onSaved }) {
         <section className="content-card profile-card sub-availability-card">
           <header className="content-card-header">
             <div>
-              <h2>Sub Availability</h2>
+              <h2>Spare Teams</h2>
 
               <p className="sub-availability-description">
-                Select the teams this player is willing to
-                substitute for.
+                Select teams to appear in their Spares list.
               </p>
             </div>
           </header>
@@ -474,16 +451,16 @@ export default function ProfileEditor({ profile, onBack, onSaved }) {
             <p>No teams are currently available.</p>
           ) : (
             <div className="sub-team-options">
-              {teams.map((team) => (
+              {teams.filter((team) => String(team.id) !== form.main_team_id).map((team) => (
                 <label
                   className="sub-team-option"
                   key={team.id}
                 >
                   <input
                     type="checkbox"
-                    checked={selectedSubTeamIds.includes(team.id)}
+                    checked={selectedSubTeamIds.includes(String(team.id))}
                     onChange={() =>
-                      toggleSubTeam(team.id)
+                      toggleSubTeam(String(team.id))
                     }
                   />
 
@@ -503,28 +480,20 @@ export default function ProfileEditor({ profile, onBack, onSaved }) {
             <label className="form-field">
               <span>Industry</span>
 
-              <select
-                value={form.industry_id}
+              <input
+                type="text"
+                list="industry-options"
+                value={form.industry_name}
                 onChange={(event) =>
-                  updateField(
-                    'industry_id',
-                    event.target.value
-                  )
+                  updateField('industry_name', event.target.value)
                 }
-              >
-                <option value="">
-                  No industry selected
-                </option>
-
+                placeholder="Select or type your industry"
+              />
+              <datalist id="industry-options">
                 {industries.map((industry) => (
-                  <option
-                    key={industry.id}
-                    value={industry.id}
-                  >
-                    {industry.name}
-                  </option>
+                  <option key={industry.id} value={industry.name} />
                 ))}
-              </select>
+              </datalist>
             </label>
 
             <label className="form-field">
@@ -625,12 +594,13 @@ export default function ProfileEditor({ profile, onBack, onSaved }) {
         </section>
       </div>
 
+      {teamLoadError && <p role="alert">{teamLoadError}</p>}
       <div className="profile-actions">
         <button
           type="button"
           className="action-btn action-btn--primary"
           onClick={handleSave}
-          disabled={saving || subPreferencesLoading}
+          disabled={saving || subPreferencesLoading || Boolean(teamLoadError)}
         >
           {saving ? 'Saving...' : 'Save Profile'}
         </button>

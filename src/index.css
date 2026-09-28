@@ -2154,6 +2154,10 @@ button {
   overflow: hidden;
 }
 
+.team-detail-view > .roster-card + .roster-card {
+  margin-top: 32px;
+}
+
 .roster-card .content-card-header {
   margin: 0;
   padding: 10px 14px;

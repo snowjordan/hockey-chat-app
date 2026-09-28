@@ -14,6 +14,7 @@ export default function Directory() {
         email,
         phone,
         profile_business_listings (
+          custom_industry,
           company_name,
           description,
           linkedin_url,
@@ -51,7 +52,7 @@ export default function Directory() {
       listing.email?.toLowerCase().includes(search) ||
       listing.phone?.toLowerCase().includes(search) ||
       business?.company_name?.toLowerCase().includes(search) ||
-      business?.industries?.name?.toLowerCase().includes(search) ||
+      (business?.custom_industry ?? business?.industries?.name)?.toLowerCase().includes(search) ||
       business?.description?.toLowerCase().includes(search)
     )
   })
@@ -107,7 +108,7 @@ export default function Directory() {
                     <label>Industry</label>
 
                     <div className="directory-value">
-                      {business?.industries?.name ?? 'No industry listed'}
+                      {business?.custom_industry ?? business?.industries?.name ?? 'No industry listed'}
                     </div>
                   </div>
                 </section>

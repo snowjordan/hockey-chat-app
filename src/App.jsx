@@ -1,3 +1,4 @@
+import { attachSparePlayers, findViewingTeam } from "./utils/teamHelpers.js";
 import { useEffect, useState } from "react";
 import { supabase } from "./lib/supabaseClient";
 import { loadAuthenticatedProfile } from "./lib/authHelpers.js";
@@ -21,7 +22,7 @@ import {
     applyRsvpAttendanceChange,
     canRsvpToGame,
     filterGamesForTeam,
-    findTeamForProfile,
+    filterUpcomingGamesForTeam,
     formatDateKey,
     formatGameDate,
     formatGameTime,
@@ -442,6 +443,7 @@ function App() {
     const [accessDenied, setAccessDenied] = useState(false);
     const [activeView, setActiveView] = useState("dashboard");
     const [scheduleTargetGame, setScheduleTargetGame] = useState(null);
+    const [teamRevision, setTeamRevision] = useState(0);
     const [selectedTeam, setSelectedTeam] = useState(null);
     const [editingPlayer, setEditingPlayer] = useState(false);
     const [selectedPlayer, setSelectedPlayer] = useState(null);
@@ -466,6 +468,19 @@ function App() {
     const [expandedNoticeId, setExpandedNoticeId] = useState(null);
 
     const [upcomingGames, setUpcomingGames] = useState([]);
+    const [today, setToday] = useState(() => formatDateKey(new Date()));
+
+    useEffect(() => {
+        const refreshDate = () => setToday(formatDateKey(new Date()));
+        const timer = window.setInterval(refreshDate, 30000);
+        window.addEventListener('focus', refreshDate);
+        document.addEventListener('visibilitychange', refreshDate);
+        return () => {
+            window.clearInterval(timer);
+            window.removeEventListener('focus', refreshDate);
+            document.removeEventListener('visibilitychange', refreshDate);
+        };
+    }, []);
     const [nextGameIndex, setNextGameIndex] = useState(0);
 
     const [leagueAlerts, setLeagueAlerts] = useState([]);
@@ -504,16 +519,17 @@ function App() {
 
     const isAdmin = ADMIN_EMAILS.has(session?.user?.email)
 
-    const rawMyTeam = findTeamForProfile(
-        teams,
-        currentProfile?.id
-    );
+    const rawMyTeam = findViewingTeam(teams, currentProfile);
 
-    const currentTeamId = rawMyTeam?.id ?? null;
+    const isMainTeamView = (rawMyTeam?.team_members ?? []).some(
+        (member) => member.profiles?.id === currentProfile?.id
+    );
+    const currentTeamId = isMainTeamView ? rawMyTeam.id : null;
 
     const myTeam = rawMyTeam
         ? {
               ...rawMyTeam,
+              canRsvp: isMainTeamView,
               roster: rawMyTeam.team_members ?? [],
           }
         : null;
@@ -857,7 +873,8 @@ function App() {
                             email,
                             phone,
                             notes,
-                            auth_user_id
+                            auth_user_id,
+                            active_team_id
                         )
                     )
                 `)
@@ -869,11 +886,19 @@ function App() {
                 return
             }
 
-            setTeams(data ?? [])
+            const { data: preferences, error: spareError } = await supabase
+                .from("sub_team_preferences")
+                .select("team_id, profiles!inner(id, full_name, email, phone, notes, auth_user_id, active_team_id)")
+                .eq("profiles.is_system_account", false)
+            if (spareError) {
+                console.error("Error loading spare teams:", spareError)
+                return
+            }
+            setTeams(attachSparePlayers(data ?? [], preferences ?? []))
         }
 
         loadTeams()
-    }, [currentProfile])
+    }, [currentProfile, teamRevision])
 
     const currentLeagueName = teams[0]?.league_name ?? null;
 
@@ -898,10 +923,14 @@ function App() {
             return;
         }
 
+        let cancelled = false;
+        setUpcomingGames([]);
+        setNextGameIndex(0);
         async function loadUpcomingGames() {
             const { data, error } = await supabase
                 .from('games')
                 .select('*')
+                .gte('game_date', today)
                 .or(`home_team_id.eq.${myTeam.id},away_team_id.eq.${myTeam.id}`)
                 .order('starts_at', { ascending: true });
 
@@ -910,16 +939,18 @@ function App() {
                 return;
             }
 
+            if (cancelled) return;
             // Fail closed even if a future query change accidentally returns
             // a game outside this player's team.
             setUpcomingGames(
-                filterGamesForTeam(data ?? [], myTeam.id)
+                filterUpcomingGamesForTeam(data ?? [], myTeam.id, today)
             );
             setNextGameIndex(0);
         }
 
         loadUpcomingGames();
-    }, [currentProfile?.id, myTeam?.id]);
+        return () => { cancelled = true; };
+    }, [currentProfile?.id, myTeam?.id, today]);
 
 
     const currentUserId = currentProfile?.id ?? null;
@@ -932,6 +963,8 @@ function App() {
             return;
         }
         
+        let cancelled = false;
+        setUserRsvp("pending");
         async function loadCurrentRsvp() {
             const { data, error } = await supabase
                 .from("game_rsvps")
@@ -945,10 +978,11 @@ function App() {
                     return;
                 }
 
-                setUserRsvp(data?.status ?? "pending");
+                if (!cancelled) setUserRsvp(data?.status ?? "pending");
             }
 
             loadCurrentRsvp();
+            return () => { cancelled = true; };
     }, [upcomingGame?.id, currentProfile?.id]);
 
 
@@ -966,6 +1000,8 @@ function App() {
             return;
         }
 
+        let cancelled = false;
+        setRsvpsByProfile({});
         async function loadTeamAttendance() {
             const { data, error: attendanceError } = await supabase
                 .from("game_rsvps")
@@ -1018,6 +1054,7 @@ function App() {
                 teamProfileIds.size - responded
             )
 
+            if (cancelled) return;
             setTeamAttendance(attendance);
 
             // Persisted DB values are now copied back into React state.
@@ -1026,6 +1063,7 @@ function App() {
         }
 
         loadTeamAttendance();
+        return () => { cancelled = true; };
     }, [upcomingGame?.id, myTeam?.id, myTeam?.team_members]);
 
     const rosterAttendance = Object.values(
@@ -1072,7 +1110,7 @@ function App() {
             return;
         }
 
-        if (!canRsvpToGame(upcomingGame, myTeam?.id)) {
+        if (!myTeam?.canRsvp || !canRsvpToGame(upcomingGame, myTeam?.id)) {
             console.warn(
                 "Blocked RSVP for game outside player's team",
                 upcomingGame.id
@@ -1154,6 +1192,7 @@ function App() {
             return;
         }
 
+        let cancelled = false;
         async function loadMobileGameData() {
             const gameIds = upcomingGames.map((game) => game.id);
 
@@ -1237,12 +1276,14 @@ function App() {
                 )
             }
 
+            if (cancelled) return;
             setMobileRsvpsByGame(nextRsvpsByGame);
             setMobileAttendanceByGame(nextAttendanceByGame);
             setMobileRsvpsByProfileByGame(nextRsvpsByProfileByGame)
         }
 
         loadMobileGameData();
+        return () => { cancelled = true; };
     }, [upcomingGames, currentProfile?.id, myTeam?.id]);
 
     const mobileGameContexts = upcomingGames
@@ -1286,7 +1327,7 @@ function App() {
             return;
         }
 
-        if (!canRsvpToGame(game, myTeam?.id)) {
+        if (!myTeam?.canRsvp || !canRsvpToGame(game, myTeam?.id)) {
             console.warn(
                 "Blocked RSVP for game outside player's team",
                 game.id
@@ -1568,7 +1609,9 @@ function App() {
                     <ProfileEditor
                         profile={profile}
                         onBack={() => setEditingPlayer(false)}
-                        onSaved={() => {
+                        onSaved={(updatedProfile) => {
+                            if (updatedProfile.id === currentProfile.id) setCurrentProfile(updatedProfile)
+                            setTeamRevision((revision) => revision + 1)
                             setEditingPlayer(false)
                             setSelectedPlayer(null)
                             setSelectedTeam(null)
@@ -1780,7 +1823,10 @@ function App() {
 
             case "admin-profiles":
                 if (!isAdmin) return null;
-                return <AdminProfilesView />;
+                return <AdminProfilesView onProfileSaved={(updatedProfile) => {
+                    if (updatedProfile.id === currentProfile.id) setCurrentProfile(updatedProfile);
+                    setTeamRevision((revision) => revision + 1);
+                }} />;
 
             case "admin-notice":
                 if (!isAdmin) return null;
@@ -2197,11 +2243,13 @@ function DashboardView({
                                 )}
                             </div>
                             <div className="next-game-col next-game-col--actions">
-                                <span className="col-label">Your Status</span>
-                                <p className="your-status">
-                                    Currently <strong className={`text-${userRsvp}`}>{rsvpLabel(userRsvp)}</strong>
-                                </p>
-                                <RsvpControls value={userRsvp} onChange={onRsvp} size="large" />
+                                {myTeam?.canRsvp ? <>
+                                    <span className="col-label">Your Status</span>
+                                    <p className="your-status">
+                                        Currently <strong className={`text-${userRsvp}`}>{rsvpLabel(userRsvp)}</strong>
+                                    </p>
+                                    <RsvpControls value={userRsvp} onChange={onRsvp} size="large" />
+                                </> : <p className="your-status">Viewing spare team's schedule and roster</p>}
                                 <div className="action-stack action-stack--mobile">
                                     <button type="button" className="action-btn action-btn--primary" onClick={onMessageTeam}>Message Team</button>
                                     <div className="game-more-actions">
@@ -2290,24 +2338,11 @@ function DashboardView({
                                         </div>
 
                                         <div className="next-game-col next-game-col--actions">
-                                            <span className="col-label">
-                                                Your Status
-                                            </span>
-
-                                            <p className="your-status">
-                                                Currently{" "}
-                                                <strong className={`text-${mobileUserRsvp}`}>
-                                                    {rsvpLabel(mobileUserRsvp)}
-                                                </strong>
-                                            </p>
-
-                                            <RsvpControls
-                                                value={mobileUserRsvp}
-                                                onChange={(status) =>
-                                                    onMobileRsvp(game, status)
-                                                }
-                                                size="large"
-                                            />
+                                            {myTeam?.canRsvp ? <>
+                                                <span className="col-label">Your Status</span>
+                                                <p className="your-status">Currently <strong className={`text-${mobileUserRsvp}`}>{rsvpLabel(mobileUserRsvp)}</strong></p>
+                                                <RsvpControls value={mobileUserRsvp} onChange={(status) => onMobileRsvp(game, status)} size="large" />
+                                            </> : <p className="your-status">Viewing spare team's schedule and roster</p>}
 
                                             <div className="action-stack action-stack--mobile">
                                                 <button
@@ -2558,6 +2593,9 @@ function ScheduleView({
             return;
         }
 
+        let cancelled = false;
+        setGames([]);
+        setRsvpGameId(null);
         async function loadGames() {
             const { data, error } = await supabase
                 .from('games')
@@ -2570,10 +2608,11 @@ function ScheduleView({
                 return;
             }
 
-            setGames(filterGamesForTeam(data ?? [], myTeam.id));
+            if (!cancelled) setGames(filterGamesForTeam(data ?? [], myTeam.id));
         }
 
         loadGames();
+        return () => { cancelled = true; };
     }, [myTeam?.id]);
 
     // Desktop version of Schedule - Calendar
@@ -3245,6 +3284,44 @@ function TeamDetail({ team, teams, games, currentUserId, league, userRsvp, onBac
                 </thead>
                 <tbody>
                     {roster.map((member) => (
+                            <tr key={member.id} onClick={() => onSelectPlayer(member)}>
+                                <td className="roster-name">
+                                    <div className="team-roster-player">
+                                        <div className="team-roster-avatar">
+                                            {(
+                                                member.profiles?.full_name ?? 'Unknown player'
+                                            ).split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}
+                                        </div>
+                                        <span>
+                                            {member.profiles?.full_name ?? "Unknown player"}
+                                        </span>
+                                    </div>
+                                </td>
+                                <td>{member.jersey_number}</td>
+                                <td>
+                                    {{
+                                        forward: "Forward",
+                                        defense: "Defense",
+                                        goalie: "Goalie",
+                                        F: "Forward",
+                                        D: "Defense",
+                                        G: "Goalie",
+                                    }[member.position] ?? member.position}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </section>
+        <section className="content-card roster-card">
+            <header className="content-card-header"><h2>Spares</h2></header>
+            {(team.spares ?? []).length === 0 && <p>No spare players selected this team.</p>}
+            <table className="roster-table">
+                <thead>
+                    <tr><th>Name</th><th>#</th><th>Position</th></tr>
+                </thead>
+                <tbody>
+                    {(team.spares ?? []).map((member) => (
                             <tr key={member.id} onClick={() => onSelectPlayer(member)}>
                                 <td className="roster-name">
                                     <div className="team-roster-player">

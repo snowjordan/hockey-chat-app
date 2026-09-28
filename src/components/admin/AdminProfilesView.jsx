@@ -61,7 +61,7 @@ async function fetchProfiles() {
     return error ? [] : sortProfiles(data ?? []);
 }
 
-export default function AdminProfilesView() {
+export default function AdminProfilesView({ onProfileSaved }) {
     const [profiles, setProfiles] = useState([]);
     const [teams, setTeams] = useState([]);
     const [logins, setLogins] = useState({});
@@ -159,7 +159,8 @@ export default function AdminProfilesView() {
             <ProfileEditor
                 profile={editingProfile}
                 onBack={() => setEditingProfile(null)}
-                onSaved={async () => {
+                onSaved={async (updatedProfile) => {
+                    onProfileSaved?.(updatedProfile);
                     setEditingProfile(null);
                     setLoading(true);
                     setProfiles(await fetchProfiles());

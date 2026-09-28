@@ -61,6 +61,7 @@ export default function ProfileView({
           .from('profile_business_listings')
           .select(`
             id,
+            custom_industry,
             company_name,
             description,
             is_available_for_work,
@@ -219,7 +220,7 @@ export default function ProfileView({
 
           <section className="content-card profile-card">
             <header className="content-card-header">
-              <h2>Sub Availability</h2>
+              <h2>Spare Teams</h2>
             </header>
 
             {subTeams.length === 0 ? (
@@ -265,7 +266,7 @@ export default function ProfileView({
                   </span>
 
                   <span>
-                    {businessListing.industries?.name ||
+                    {businessListing.custom_industry || businessListing.industries?.name ||
                       'Not provided'}
                   </span>
                 </div>
