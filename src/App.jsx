@@ -26,6 +26,7 @@ import {
     formatDateKey,
     formatGameDate,
     formatGameTime,
+    gameEndTime,
     isValidRsvpStatus,
 } from "./utils/scheduleHelpers.js";
 import Directory from './components/Directory';
@@ -37,6 +38,7 @@ import SetPassword from './components/SetPassword';
 import AdminScheduleView from './components/admin/AdminScheduleView';
 import AdminProfilesView from './components/admin/AdminProfilesView';
 import AdminNoticeView from './components/admin/AdminNoticeView';
+import { manageableTeams } from "./utils/rsvpManagement.js";
 import RsvpManagement from "./components/RsvpManagement.jsx";
 import SavedTab from './components/SavedTab';
 
@@ -217,6 +219,8 @@ function TonightsRoster({ game, myTeam, rsvpsByProfile = {}, onPromptPlayers }) 
 }
 
 function GameDetailModal({
+    access,
+    onRsvpSaved,
     game,
     onClose,
     onMessageTeam,
@@ -226,13 +230,50 @@ function GameDetailModal({
     const away = game.away_team_name ?? "TBD";
     const date = formatGameDate(game.game_date);
     const startTime = formatGameTime(game.start_time);
-    const endTime = formatGameTime(game.end_time);
+    const endTime = formatGameTime(gameEndTime(game.start_time));
     const time = `${startTime} – ${endTime}`;
     const rink = `${game.location_name ?? "TBD"}${
         game.rink ? ` · ${game.rink}` : ""
     }`;
 
     const [attendanceState, setAttendanceState] = useState(null);
+    const [savingRsvp, setSavingRsvp] = useState(false);
+    const [rsvpError, setRsvpError] = useState("");
+    const [rsvpNotice, setRsvpNotice] = useState("");
+    const canEditTeam = (teamId) => manageableTeams([{ id: teamId }], access).length > 0;
+
+    async function saveTeamRsvp(player, status) {
+        const profileId = player.profile_id ?? player.profiles?.id;
+        if (savingRsvp || !profileId || !canEditTeam(player.team_id) || (status !== "pending" && !isValidRsvpStatus(status))) return;
+        setSavingRsvp(true);
+        setRsvpError("");
+        setRsvpNotice("");
+        try {
+            const { error } = await supabase.rpc("manage_game_rsvp", {
+                p_game_id: String(game.id), p_profile_id: String(profileId),
+                p_team_id: String(player.team_id), p_status: status,
+            });
+            if (error) throw error;
+            setAttendanceState((previous) => {
+                const responses = { ...previous.rsvpsByProfile, [profileId]: status };
+                const next = { ...previous, rsvpsByProfile: responses };
+                for (const side of ["home", "away"]) {
+                    const going = previous[side].roster.filter((member) => responses[member.profile_id] === "going");
+                    const goalieIds = new Set(going.filter((member) =>
+                        ["g", "goalie", "goaltender"].includes((member.position ?? "").trim().toLowerCase())
+                    ).map((member) => member.profile_id));
+                    const skaterIds = new Set(going.filter((member) => !goalieIds.has(member.profile_id)).map((member) => member.profile_id));
+                    next[side] = { ...previous[side], going: new Set(going.map((member) => member.profile_id)).size,
+                        goalie: goalieIds.size > 0, subs: skaterIds.size >= 10 ? "" : "Subs needed" };
+                }
+                return next;
+            });
+            setRsvpNotice(`RSVP updated for ${player.profiles?.full_name ?? "player"}.`);
+            onRsvpSaved?.();
+        } catch (error) {
+            setRsvpError(`Could not save RSVP: ${error.message}`);
+        } finally { setSavingRsvp(false); }
+    }
 
     useEffect(() => {
         let cancelled = false;
@@ -378,6 +419,8 @@ function GameDetailModal({
 
                 <section className="game-detail-rosters" aria-label="Team rosters">
                     <h4>Team rosters</h4>
+                    {rsvpError && <p className="admin-save-error" role="alert">{rsvpError}</p>}
+                    {rsvpNotice && <p role="status">{rsvpNotice}</p>}
                     {!attendanceState ? (
                         <p role="status">Loading rosters...</p>
                     ) : attendanceState.error ? (
@@ -386,18 +429,23 @@ function GameDetailModal({
                         [["home", home, "Home"], ["away", away, "Away"]].map(([side, name, label]) => (
                             <section className="game-detail-team-roster" key={side} aria-label={`${label}: ${name} roster`}>
                                 <h5>{label}: {name}</h5>
+                                {canEditTeam(game[`${side}_team_id`]) && <p>Change a player's RSVP below.</p>}
                                 {attendanceState[side].roster.length > 0 ? (
                                     <>
                                         <div className="game-detail-roster-desktop">
                                             <GameRosterList
                                                 players={attendanceState[side].roster}
                                                 rsvpsByProfile={attendanceState.rsvpsByProfile}
+                                                onRsvpChange={canEditTeam(game[`${side}_team_id`]) ? saveTeamRsvp : undefined}
+                                                saving={savingRsvp}
                                             />
                                         </div>
                                         <div className="game-detail-roster-mobile">
                                             <GameRosterList
                                                 players={attendanceState[side].roster}
                                                 rsvpsByProfile={attendanceState.rsvpsByProfile}
+                                                onRsvpChange={canEditTeam(game[`${side}_team_id`]) ? saveTeamRsvp : undefined}
+                                                saving={savingRsvp}
                                                 variant="mobile"
                                             />
                                         </div>
@@ -537,7 +585,7 @@ function App() {
     }, [session?.user?.id, teamRevision]);
     const access = managementAccess?.userId === session?.user?.id ? managementAccess : null;
     const isAdmin = access?.is_admin === true;
-    const canManageRsvps = isAdmin || (access?.team_ids?.length ?? 0) > 0;
+    const canManageRsvps = isAdmin;
 
     const rawMyTeam = findViewingTeam(teams, currentProfile);
 
@@ -1734,6 +1782,8 @@ function App() {
             case "schedule":
                 return (
                     <ScheduleView
+                        access={access}
+                        onRsvpSaved={() => setRsvpRevision((value) => value + 1)}
                         requestedDetailGame={scheduleTargetGame}
                         currentTeamId={currentTeamId}
                         myTeam={myTeam}
@@ -2000,10 +2050,6 @@ function App() {
                         </button>
                     ))}
 
-                    {canManageRsvps && (
-                        <button type="button" className={`sidebar-link${activeView === "manage-rsvps" ? " is-active" : ""}`}
-                            onClick={() => navigateTo("manage-rsvps")}>Manage RSVPs</button>
-                    )}
                     {isAdmin && (
                         <>
                             <div className="sidebar-section-label">Admin</div>
@@ -2029,6 +2075,10 @@ function App() {
                                 Notice
                             </button>
                         </>
+                    )}
+                    {canManageRsvps && (
+                        <button type="button" className={`sidebar-link${activeView === "manage-rsvps" ? " is-active" : ""}`}
+                            onClick={() => navigateTo("manage-rsvps")}>Manage RSVPs</button>
                     )}
                 </nav>
 
@@ -2071,6 +2121,8 @@ function GameRosterList({
     players = [],
     rsvpsByProfile = {},
     variant = "desktop",
+    onRsvpChange,
+    saving = false,
 }) {
     return (
         <ul className="rail-roster-list">
@@ -2082,6 +2134,17 @@ function GameRosterList({
                 const status = rsvpsByProfile[profileId] ?? "pending"
 
                 const initials = playerName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()
+
+                const editor = onRsvpChange && profileId ? (
+                    <select value={status} disabled={saving}
+                        aria-label={`RSVP for ${playerName}`}
+                        onChange={(event) => onRsvpChange(player, event.target.value)}>
+                        <option value="pending">No response</option>
+                        <option value="going">Going</option>
+                        <option value="maybe">Maybe</option>
+                        <option value="out">Out</option>
+                    </select>
+                ) : null;
 
                 if (variant == "mobile") {
                     return (
@@ -2109,7 +2172,7 @@ function GameRosterList({
                                 </div>
                             </div>
 
-                            <div
+                            {editor ?? <div
                                 className={`mobile-roster-status mobile-roster-status--${status}`}
                                 aria-label={rsvpLabel(status)}
                             >
@@ -2117,7 +2180,7 @@ function GameRosterList({
                                 {status === "maybe" && "?"}
                                 {status === "out" && "×"}
                                 {status === "pending" && "—"}
-                            </div>
+                            </div>}
                         </li>
                     )
                 }
@@ -2131,9 +2194,9 @@ function GameRosterList({
                             {playerName}
                         </span>
 
-                        <span className={`text-${status}`}>
+                        {editor ?? <span className={`text-${status}`}>
                             {rsvpLabel(status)}
-                        </span>
+                        </span>}
                     </li>
                 )
             })}
@@ -2559,6 +2622,8 @@ function TeamCard({ team, games, teams, onSelect, compact = false }) {
 }
 
 function ScheduleView({
+    access,
+    onRsvpSaved,
     requestedDetailGame = null,
     myTeam,
     currentTeamId,
@@ -3027,6 +3092,8 @@ function ScheduleView({
 
             {detailGame && (
                 <GameDetailModal
+                    access={access}
+                    onRsvpSaved={onRsvpSaved}
                     game={detailGame}
                     key={detailGame.id}
                     onClose={() => setDetailGame(null)}

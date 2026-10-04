@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { filterUpcomingGamesForTeam, filterGamesForTeam, formatDateKey } from './scheduleHelpers.js';
+import { filterUpcomingGamesForTeam, filterGamesForTeam, formatDateKey, gameEndTime } from './scheduleHelpers.js';
 
 const game = (id, date, time = '19:00:00', team = 'red') => ({
     id, game_date: date, start_time: time, home_team_id: team, away_team_id: 'blue',
@@ -30,4 +30,14 @@ test('no upcoming games or missing team produces an empty dashboard list', () =>
     assert.deepEqual(filterUpcomingGamesForTeam([game('past', '2026-09-27')], 'red', '2026-09-28'), []);
     assert.deepEqual(filterUpcomingGamesForTeam([], 'red', '2026-09-28'), []);
     assert.deepEqual(filterUpcomingGamesForTeam([game('today', '2026-09-28')], null, '2026-09-28'), []);
+});
+
+
+test('games end exactly an hour after their start, including midnight', () => {
+    assert.equal(gameEndTime('19:30'), '20:30:00');
+    assert.equal(gameEndTime('11:45:15'), '12:45:15');
+    assert.equal(gameEndTime('23:30:00'), '00:30:00');
+    for (const invalid of [null, '', 'TBD', '24:00', '12:60', '12:30:60']) {
+        assert.equal(gameEndTime(invalid), null);
+    }
 });

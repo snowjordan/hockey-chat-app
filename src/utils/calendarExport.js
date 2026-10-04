@@ -1,3 +1,5 @@
+import { gameEndTime } from "./scheduleHelpers.js";
+
 const encoder = new TextEncoder();
 
 function escapeText(value) {
@@ -64,7 +66,7 @@ export function buildScheduleIcs(games, now = new Date()) {
         if (!date) continue;
 
         const start = validTime(game.start_time);
-        const end = validTime(game.end_time);
+        const end = validTime(gameEndTime(game.start_time));
         const dateKey = formatDate(date);
         const location = [game.location_name, game.rink].filter(Boolean).join(" - ");
         const summary = `${game.home_team_name || "TBD"} vs ${game.away_team_name || "TBD"}`;

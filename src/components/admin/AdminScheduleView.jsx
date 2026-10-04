@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { downloadScheduleIcs } from "../../utils/calendarExport.js";
-import { formatGameDate, formatGameTime } from "../../utils/scheduleHelpers";
+import { formatGameDate, formatGameTime, gameEndTime } from "../../utils/scheduleHelpers";
 
 const EMPTY_FORM = {
     game_date: "",
@@ -39,7 +39,7 @@ export default function AdminScheduleView() {
 
     function openEdit(game) {
         setIsNewGame(false);
-        setEditingGame({ ...EMPTY_FORM, ...game });
+        setEditingGame({ ...EMPTY_FORM, ...game, end_time: gameEndTime(game.start_time) });
         setSaveError("");
     }
 
@@ -56,7 +56,9 @@ export default function AdminScheduleView() {
     }
 
     function handleField(field, value) {
-        setEditingGame((prev) => ({ ...prev, [field]: value }));
+        setEditingGame((prev) => ({ ...prev, [field]: value,
+            ...(field === "start_time" ? { end_time: gameEndTime(value) } : {}),
+        }));
     }
 
     function handleTeamSelect(side, teamId) {
@@ -70,11 +72,17 @@ export default function AdminScheduleView() {
 
     async function saveGame() {
         if (!editingGame) return;
+        const endTime = gameEndTime(editingGame.start_time);
+        if (!endTime) {
+            setSaveError("Enter a valid start time. Games last 60 minutes.");
+            return;
+        }
+        const gameToSave = { ...editingGame, end_time: endTime };
         setSaving(true);
         setSaveError("");
 
         if (isNewGame) {
-            const { id: _ignored, ...fields } = editingGame;
+            const { id: _ignored, ...fields } = gameToSave;
             const { data, error } = await supabase
                 .from("games")
                 .insert(fields)
@@ -95,7 +103,7 @@ export default function AdminScheduleView() {
             );
             closeEdit();
         } else {
-            const { id, ...fields } = editingGame;
+            const { id, ...fields } = gameToSave;
             const { error } = await supabase.from("games").update(fields).eq("id", id);
 
             setSaving(false);
@@ -105,7 +113,7 @@ export default function AdminScheduleView() {
                 return;
             }
 
-            setGames((prev) => prev.map((g) => (g.id === id ? { ...editingGame } : g)));
+            setGames((prev) => prev.map((g) => (g.id === id ? { ...gameToSave } : g)));
             closeEdit();
         }
     }
@@ -238,11 +246,11 @@ export default function AdminScheduleView() {
                                 </div>
 
                                 <div className="form-field">
-                                    <label>End Time</label>
+                                    <label>End Time (60 minutes)</label>
                                     <input
                                         type="time"
                                         value={editingGame.end_time ?? ""}
-                                        onChange={(e) => handleField("end_time", e.target.value)}
+                                        readOnly
                                     />
                                 </div>
 

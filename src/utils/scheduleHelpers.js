@@ -137,6 +137,14 @@ export function formatGameDate(dateString) {
     );
 }
 
+// Games last 60 minutes, including starts that cross midnight.
+export function gameEndTime(startTime) {
+    if (typeof startTime !== "string" || !/^\d{2}:\d{2}(?::\d{2})?$/.test(startTime)) return null;
+    const [hours, minutes, seconds = 0] = startTime.split(":").map(Number);
+    if (hours > 23 || minutes > 59 || seconds > 59) return null;
+    return [(hours + 1) % 24, minutes, seconds].map((part) => String(part).padStart(2, "0")).join(":");
+}
+
 export function formatGameTime(timeString) {
     if (!timeString) {
         return "TBD";
