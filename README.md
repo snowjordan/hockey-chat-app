@@ -45,3 +45,34 @@ cannot save another player's settings and that admins can edit players.
 Spare-team viewing shows that team's schedule and roster; RSVP controls remain
 available when viewing the player's main team. Team-specific spare call-up RSVPs
 are not introduced by this migration.
+
+### Team captains and managed RSVPs
+
+Apply `supabase/migrations/20261004000000_team_captains.sql` before deploying this
+version. It requires the existing `is_league_admin()` function, which must recognize
+the main administrators. The UI now uses that database function for administrator
+access instead of a separate hardcoded email list. Verify both existing admin
+accounts are recognized before rollout. Earlier migrations referenced above are
+absent from this checkout; this migration assumes the current deployed schema.
+
+Administrators use **Manage RSVPs** to select a team and assign/remove captains
+using the roster checkboxes. Multiple captains per team are supported. Captains
+must be main roster members; departing members lose their assignment. Captains
+can only manage their assigned teams, with no additional admin privileges.
+Select a game to set Going, Maybe, Out, or reset to No response. Administrators
+can manage every team, even when they are not rostered on that team. Spare call-up
+RSVPs remain outside this feature.
+
+Assignment writes are restricted to an administrator-only database function.
+Managed RSVP writes validate the caller, current captain assignment, player team,
+game teams, and status on every request. Existing self-RSVP policies are unchanged.
+No database migration has been applied by the code change itself.
+
+Run `node --test src/utils/*.test.mjs` and `npm run build`. In a staging database,
+verify an admin can assign/revoke captains and change any rostered player's RSVP;
+a captain can update only their own team's game RSVPs; and ordinary players and
+anonymous callers cannot invoke either privileged write successfully. Also test
+forged game/team/player IDs, invalid statuses, revoked captains, team transfers,
+resetting to No response, and direct writes to `team_captains` being denied.
+Verify updated counts and the player's own RSVP after returning to Dashboard
+and Schedule, and check the management page on mobile.

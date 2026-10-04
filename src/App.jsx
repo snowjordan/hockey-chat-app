@@ -37,13 +37,9 @@ import SetPassword from './components/SetPassword';
 import AdminScheduleView from './components/admin/AdminScheduleView';
 import AdminProfilesView from './components/admin/AdminProfilesView';
 import AdminNoticeView from './components/admin/AdminNoticeView';
+import RsvpManagement from "./components/RsvpManagement.jsx";
 import SavedTab from './components/SavedTab';
 
-
-const ADMIN_EMAILS = new Set([
-    "joewjordan@yahoo.com",
-    "connor.jordan1201@gmail.com",
-]);
 
 const NAV_ITEMS = [
     { id: "dashboard", label: "Dashboard" },
@@ -517,7 +513,31 @@ function App() {
 
     const isSetPasswordPage = window.location.pathname === "/set-password" || searchParams.get("page") === "set-password"
 
-    const isAdmin = ADMIN_EMAILS.has(session?.user?.email)
+    const [managementAccess, setManagementAccess] = useState(null);
+    const [managementError, setManagementError] = useState("");
+    const [rsvpRevision, setRsvpRevision] = useState(0);
+    useEffect(() => {
+        let cancelled = false;
+        async function loadAccess() {
+            if (!session?.user?.id) return;
+            try {
+                const { data, error } = await supabase.rpc("rsvp_management_access");
+                if (error) throw error;
+                if (cancelled) return;
+                setManagementAccess({ ...data, userId: session.user.id });
+                setManagementError("");
+            } catch {
+                if (cancelled) return;
+                setManagementAccess(null);
+                setManagementError("Team management permissions could not be loaded. Please reload or contact an administrator.");
+            }
+        }
+        loadAccess();
+        return () => { cancelled = true; };
+    }, [session?.user?.id, teamRevision]);
+    const access = managementAccess?.userId === session?.user?.id ? managementAccess : null;
+    const isAdmin = access?.is_admin === true;
+    const canManageRsvps = isAdmin || (access?.team_ids?.length ?? 0) > 0;
 
     const rawMyTeam = findViewingTeam(teams, currentProfile);
 
@@ -983,7 +1003,7 @@ function App() {
 
             loadCurrentRsvp();
             return () => { cancelled = true; };
-    }, [upcomingGame?.id, currentProfile?.id]);
+    }, [upcomingGame?.id, currentProfile?.id, rsvpRevision]);
 
 
     // WHat did EVERYONE answer?
@@ -1064,7 +1084,7 @@ function App() {
 
         loadTeamAttendance();
         return () => { cancelled = true; };
-    }, [upcomingGame?.id, myTeam?.id, myTeam?.team_members]);
+    }, [upcomingGame?.id, myTeam?.id, myTeam?.team_members, rsvpRevision]);
 
     const rosterAttendance = Object.values(
         rsvpsByProfile
@@ -1284,7 +1304,7 @@ function App() {
 
         loadMobileGameData();
         return () => { cancelled = true; };
-    }, [upcomingGames, currentProfile?.id, myTeam?.id]);
+    }, [upcomingGames, currentProfile?.id, myTeam?.id, rsvpRevision]);
 
     const mobileGameContexts = upcomingGames
         .map((game) => {
@@ -1817,6 +1837,11 @@ function App() {
                     />
                 )
 
+            case "manage-rsvps":
+                if (!canManageRsvps) return null;
+                return <RsvpManagement access={access} active={activeView === "manage-rsvps"}
+                    onSaved={() => setRsvpRevision((value) => value + 1)} />;
+
             case "admin-schedule":
                 if (!isAdmin) return null;
                 return <AdminScheduleView />;
@@ -1975,6 +2000,10 @@ function App() {
                         </button>
                     ))}
 
+                    {canManageRsvps && (
+                        <button type="button" className={`sidebar-link${activeView === "manage-rsvps" ? " is-active" : ""}`}
+                            onClick={() => navigateTo("manage-rsvps")}>Manage RSVPs</button>
+                    )}
                     {isAdmin && (
                         <>
                             <div className="sidebar-section-label">Admin</div>
@@ -2013,8 +2042,10 @@ function App() {
                 )}
 
                 <main className="main-content" key={session.user.id}>
+                    {managementError && <p role="alert">{managementError}</p>}
                     {[
                         ...NAV_ITEMS.map((item) => item.id),
+                        ...(canManageRsvps ? ["manage-rsvps"] : []),
                         ...(isAdmin ? ["admin-schedule", "admin-profiles", "admin-notice"] : []),
                     ].map((view) => (
                         <SavedTab key={view} active={activeView === view}>
