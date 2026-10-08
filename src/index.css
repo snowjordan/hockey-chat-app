@@ -5053,3 +5053,88 @@ button {
   .next-game-banner-summary { flex-direction: column; align-items: stretch; gap: 0; }
   .next-game-banner-matchup, .next-game-banner-details { flex: auto; }
 }
+
+
+/* Give substitute needs room in the mobile schedule roster modal. */
+@media (max-width: 768px) {
+  .game-detail-modal .game-team-comparison {
+    padding: 16px 20px 24px;
+  }
+  .game-detail-modal .game-team-comparison-header,
+  .game-detail-modal .game-team-comparison-row {
+    grid-template-columns: minmax(0, 0.8fr) repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+  .game-detail-modal .game-team-comparison-header strong,
+  .game-detail-modal .game-team-comparison-row > * {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .game-detail-modal .game-team-comparison-row--subs {
+    margin-top: 8px;
+    padding: 16px 0;
+    border-top: 1px solid var(--ice-200);
+    border-bottom: 1px solid var(--ice-200);
+    line-height: 1.5;
+  }
+}
+
+
+/* Mobile layout polish: contain long content and keep controls reachable. */
+@media (max-width: 768px) {
+  .app-layout { height: 100dvh; }
+  .app-bar { gap: 8px; padding-inline: 12px; }
+  .app-bar-brand { flex-shrink: 1; min-width: 0; gap: 8px; }
+  .app-bar-brand > div { min-width: 0; }
+  .app-bar-title, .app-bar-subtitle { overflow-wrap: anywhere; }
+  .sign-out-button { min-height: 44px; padding-inline: 10px; }
+  .sidebar { overflow-y: auto; padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+  .main-content { padding-bottom: max(28px, env(safe-area-inset-bottom)); }
+
+  .modal-backdrop, .modal-overlay { padding: 12px; }
+  .modal-card, .modal-panel, .mobile-roster-modal, .game-detail-modal {
+    min-width: 0;
+    max-height: calc(100dvh - 24px);
+  }
+  .modal-header { gap: 12px; padding: 14px 16px; }
+  .modal-header h3 { min-width: 0; overflow-wrap: anywhere; }
+  .modal-close { flex-shrink: 0; min-width: 44px; min-height: 44px; }
+  .modal-panel .modal-details { min-height: 0; }
+  .modal-actions { flex-wrap: wrap; gap: 8px; padding: 12px 16px 16px; }
+  .modal-actions .action-btn { flex: 1 1 120px; min-height: 44px; white-space: normal; }
+  .modal-details .admin-form-grid, .admin-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .form-field { min-width: 0; }
+  .form-field input, .form-field select, .form-field textarea, .chat-input {
+    font-size: 16px;
+    min-width: 0;
+  }
+  .form-field input:not([type="checkbox"]):not([type="radio"]), .form-field select { min-height: 44px; }
+  .admin-page-header, .player-detail-view .page-header { flex-wrap: wrap; gap: 12px; }
+  .admin-notice-history, .roster-card { overflow-x: auto; }
+  .admin-notice-history .admin-table { min-width: 480px; }
+
+  .directory-card-header { flex-wrap: wrap; gap: 8px; }
+  .directory-card h3, .directory-value, .directory-description,
+  .profile-tag, .notice-active-title, .notice-active-message { overflow-wrap: anywhere; }
+  .directory-info-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .directory-field { min-width: 0; }
+  .directory-contact-row { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .directory-contact-phone { white-space: normal; overflow-wrap: anywhere; }
+  .notice-active-header { align-items: flex-start; gap: 12px; }
+  .notice-active-header > div { min-width: 0; }
+
+  .mobile-schedule-game { grid-template-columns: 42px minmax(0, 1fr) 44px; gap: 8px; padding: 12px; }
+  .mobile-schedule-game-matchup, .mobile-schedule-game-rink { overflow-wrap: anywhere; }
+  .mobile-schedule-rsvp-status { width: 44px; height: 44px; }
+  .mobile-schedule-rsvp-popover { min-width: 0; width: min(240px, calc(100vw - 64px)); }
+  .mobile-schedule-rsvp-popover .rsvp-controls { flex-wrap: wrap; }
+  .mobile-schedule-rsvp-popover .rsvp-controls button { min-height: 44px; }
+  .game-detail-list div { grid-template-columns: 64px minmax(0, 1fr); gap: 12px; }
+  .game-detail-list strong { min-width: 0; overflow-wrap: anywhere; }
+
+  .chat-bubble { max-width: 90%; overflow-wrap: anywhere; }
+  .chat-composer { padding: 10px; }
+  .chat-composer .action-btn { flex-shrink: 0; min-height: 44px; }
+}

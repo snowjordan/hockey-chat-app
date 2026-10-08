@@ -411,7 +411,7 @@ function GameDetailModal({
                         <strong>{statusLabel("away", "goalie")}</strong>
                     </div>
 
-                    <div className="game-team-comparison-row">
+                    <div className="game-team-comparison-row game-team-comparison-row--subs">
                         <span>Subs</span>
                         <strong>{statusLabel("home", "subs")}</strong>
                         <strong>{statusLabel("away", "subs")}</strong>

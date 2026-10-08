@@ -269,7 +269,7 @@ export default function AdminNoticeView({ leagueName, onNoticeChanged }) {
 
             {/* History */}
             {pastNotices.length > 0 && (
-                <section className="content-card">
+                <section className="content-card admin-notice-history">
                     <header className="content-card-header">
                         <h2>Past Notices</h2>
                     </header>
