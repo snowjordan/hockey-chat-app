@@ -82,7 +82,8 @@ export default function AdminScheduleView() {
         setSaveError("");
 
         if (isNewGame) {
-            const { id: _ignored, ...fields } = gameToSave;
+            const fields = { ...gameToSave };
+            delete fields.id;
             const { data, error } = await supabase
                 .from("games")
                 .insert(fields)
@@ -132,14 +133,14 @@ export default function AdminScheduleView() {
 
     if (loading) {
         return (
-            <div className="page-view">
+            <div className="page-view admin-schedule-view">
                 <p className="empty-state">Loading schedule…</p>
             </div>
         );
     }
 
     return (
-        <div className="page-view">
+        <div className="page-view admin-schedule-view">
             <div className="page-header admin-page-header">
                 <div>
                     <h2>Admin · Schedule</h2>
@@ -164,7 +165,7 @@ export default function AdminScheduleView() {
                 </div>
             </div>
 
-            <section className="content-card">
+            <section className="content-card admin-schedule-card">
                 <table className="admin-table">
                     <thead>
                         <tr>
@@ -180,19 +181,19 @@ export default function AdminScheduleView() {
                     <tbody>
                         {games.length === 0 && (
                             <tr>
-                                <td colSpan={8} className="admin-table-empty">
+                                <td colSpan={7} className="admin-table-empty">
                                     No games found.
                                 </td>
                             </tr>
                         )}
                         {games.map((game) => (
                             <tr key={game.id}>
-                                <td>{formatGameDate(game.game_date)}</td>
-                                <td className="admin-table-nowrap">{formatGameTime(game.start_time)}</td>
-                                <td>{game.home_team_name ?? "TBD"}</td>
-                                <td>{game.away_team_name ?? "TBD"}</td>
-                                <td>{game.location_name ?? "—"}</td>
-                                <td>{game.rink ?? "—"}</td>
+                                <td data-label="Date">{formatGameDate(game.game_date)}</td>
+                                <td data-label="Time" className="admin-table-nowrap">{formatGameTime(game.start_time)}</td>
+                                <td data-label="Home">{game.home_team_name ?? "TBD"}</td>
+                                <td data-label="Away">{game.away_team_name ?? "TBD"}</td>
+                                <td data-label="Location">{game.location_name ?? "—"}</td>
+                                <td data-label="Rink">{game.rink ?? "—"}</td>
                                 <td className="admin-table-actions">
                                     <button
                                         type="button"
