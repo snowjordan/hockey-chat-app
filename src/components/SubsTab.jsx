@@ -11,6 +11,12 @@ export default function SubsTab() {
   const [updatingAvailability, setUpdatingAvailability] = useState(false)
   const [selectedTeamFilter, setSelectedTeamFilter] = useState('all')
   const [allTeams, setAllTeams] = useState([])
+  const [search, setSearch] = useState('')
+  const [availabilityLoading, setAvailabilityLoading] = useState(true)
+  const [availabilityError, setAvailabilityError] = useState('')
+  const [listError, setListError] = useState('')
+  const [teamsError, setTeamsError] = useState('')
+  const [notice, setNotice] = useState('')
 
   async function loadCurrentUserAvailability() {
     const {
@@ -19,6 +25,7 @@ export default function SubsTab() {
     } = await supabase.auth.getUser()
 
     if (userError) {
+      setAvailabilityError('Could not load your availability. Please refresh to try again.')
       console.error('Error loading signed-in user:', userError)
       return
     }
@@ -37,6 +44,7 @@ export default function SubsTab() {
       .maybeSingle()
 
     if (profileError) {
+      setAvailabilityError('Could not load your availability. Please refresh to try again.')
       console.error(
         'Error loading current profile availability:',
         profileError
@@ -61,11 +69,13 @@ export default function SubsTab() {
     isAvailable
   ) {
     if (!currentProfileId) {
-      alert('Could not find your profile.')
+      setAvailabilityError('Could not find your profile.')
       return
     }
 
     setUpdatingAvailability(true)
+    setAvailabilityError('')
+    setNotice('')
 
     const { error } = await supabase
       .from('profiles')
@@ -81,14 +91,13 @@ export default function SubsTab() {
         error
       )
 
-      alert(
-        'Could not update your goalie sub availability.'
-      )
+      setAvailabilityError('Could not update your goalie availability. Please try again.')
 
       setUpdatingAvailability(false)
       return
     }
 
+    setNotice(isAvailable ? 'You are now available as a goalie sub.' : 'You are no longer listed as an available goalie sub.')
     setIsAvailableToGoalieSub(isAvailable)
     setUpdatingAvailability(false)
 
@@ -97,11 +106,13 @@ export default function SubsTab() {
 
   async function handleAvailabilityChange(isAvailable) {
     if (!currentProfileId) {
-      alert('Could not find your profile.')
+      setAvailabilityError('Could not find your profile.')
       return
     }
 
     setUpdatingAvailability(true)
+    setAvailabilityError('')
+    setNotice('')
 
     const { error: updateError } = await supabase
       .from('profiles')
@@ -117,11 +128,12 @@ export default function SubsTab() {
         updateError
       )
 
-      alert('Could not update your sub availability.')
+      setAvailabilityError('Could not update your sub availability. Please try again.')
       setUpdatingAvailability(false)
       return
     }
 
+    setNotice(isAvailable ? 'You are now available as a general sub.' : 'You are no longer listed as an available general sub.')
     setIsAvailableToSub(isAvailable)
     setUpdatingAvailability(false)
 
@@ -131,7 +143,6 @@ export default function SubsTab() {
 
 
   async function loadAvailableSubs() {
-    setLoading(true)
 
     const {
       data: subPreferenceData,
@@ -167,6 +178,7 @@ export default function SubsTab() {
       .order('created_at')
 
     if (subPreferenceError) {
+      setListError('Could not load available subs. Please try again.')
       console.error(
         'Error loading available subs:',
         subPreferenceError
@@ -222,11 +234,12 @@ export default function SubsTab() {
     const formattedSubs = Array.from(
       subsByProfile.values()
     ).sort((firstSub, secondSub) =>
-      firstSub.fullName.localeCompare(
-        secondSub.fullName
+      (firstSub.fullName ?? '').localeCompare(
+        secondSub.fullName ?? ''
       )
     )
 
+    setListError('')
     setAvailableSubs(formattedSubs)
     setLoading(false)
   }
@@ -239,6 +252,7 @@ export default function SubsTab() {
 
     if (teamError) {
         console.error('Error loading teams:', teamError)
+        setTeamsError('Team filters could not be loaded. You can still search all subs.')
         setAllTeams([])
         return
   }
@@ -247,9 +261,14 @@ export default function SubsTab() {
     }
 
   useEffect(() => {
-    loadCurrentUserAvailability()
-    loadAvailableSubs()
-    loadAllTeams()
+    async function loadAvailability() {
+      try {
+        await Promise.all([loadCurrentUserAvailability(), loadAvailableSubs(), loadAllTeams()])
+      } finally {
+        setAvailabilityLoading(false)
+      }
+    }
+    loadAvailability()
 
     const subPreferencesChannel = supabase
       .channel('sub-team-preferences-changes')
@@ -309,201 +328,114 @@ export default function SubsTab() {
       ? goalieSubs
       : generalSubs
 
-  const filteredSubs =
-    selectedTeamFilter === 'all'
-        ? subsForActiveTab
-        : subsForActiveTab.filter((sub) =>
-            sub.selectedTeams.some(
-                (team) => team.id === selectedTeamFilter
-            )
-        )
+  const filteredSubs = subsForActiveTab.filter((sub) =>
+    (selectedTeamFilter === 'all' || sub.selectedTeams.some((team) => String(team.id) === selectedTeamFilter))
+    && (sub.fullName ?? '').toLowerCase().includes(search.trim().toLowerCase())
+  )
+  const hasFilters = search !== '' || selectedTeamFilter !== 'all'
+
+  function clearFilters() {
+    setSearch('')
+    setSelectedTeamFilter('all')
+  }
 
   return (
-    <div className="subs-page">
+    <div className="page-view subs-page">
       <header className="page-header">
-        <div className='sub-type-tabs'>
-          <button
-            type='button'
-            className={`action-btn ${
-              activeSubTab === 'general'
-                ? 'action-btn--primary'
-                : 'action-btn--secondary'
-            }`}
-            onClick={() => setActiveSubTab('general')}
-          >
-            General
-          </button>
-
-          <button
-              type="button"
-              className={`action-btn ${
-                activeSubTab === 'goalies'
-                  ? 'action-btn--primary'
-                  : 'action-btn--secondary'
-              }`}
-              onClick={() => setActiveSubTab('goalies')}
-          >
-              Goalies
-          </button>
-        </div>
-        <div>
-          <h2>Available Subs</h2>
-
-          <p className="page-subtitle">
-            Players who are currently available and have
-            selected teams they are willing to substitute for.
-          </p>
-        </div>
+        <h2>Available Subs</h2>
+        <p className="page-subtitle">Find a player for your next game, or let teams know you can fill in.</p>
       </header>
 
-      <section className="content-card">
+      <section className="content-card" aria-labelledby="sub-availability-heading" aria-busy={updatingAvailability || availabilityLoading}>
         <header className="content-card-header">
-          <div>
-            <h2>My Sub Availability</h2>
-
-            <p className="page-subtitle">
-              Turn this on when you are currently available to
-              substitute.
-            </p>
-          </div>
+          <h2 id="sub-availability-heading">My availability</h2>
+          <span className="content-card-meta">Keep teams in the loop</span>
         </header>
-        
-        {activeSubTab === 'general' && (
-        <label className="checkbox-field">
-          <input
-            type="checkbox"
-            checked={isAvailableToSub}
-            disabled={
-              !currentProfileId || updatingAvailability
-            }
-            onChange={(event) =>
-              handleAvailabilityChange(
-                event.target.checked
-              )
-            }
-          />
-
-          <span>
-            {updatingAvailability
-              ? 'Updating availability...'
-              : 'I am available to sub'}
-          </span>
-        </label>
-        )}
-
-        {activeSubTab === 'goalies' && (
-          <label className="checkbox-field">
-            <input
-              type="checkbox"
-              checked={isAvailableToGoalieSub}
-              disabled={
-                !currentProfileId ||
-                updatingAvailability
-              }
-              onChange={(event) =>
-                handleGoalieAvailabilityChange(
-                  event.target.checked
-                )
-              }
-            />
-
-            <span>I am available to sub as goalie</span>
-          </label>
-        )}
-
-        {!currentProfileId && (
-          <p className="page-subtitle">
-            Your signed-in account is not linked to a player
-            profile.
-          </p>
-        )}
+        <p className="page-subtitle">Choose how you can help. Set the teams you are willing to sub for in your profile.</p>
+        {availabilityError && <p className="admin-save-error" role="alert">{availabilityError}</p>}
+        {notice && <p className="subs-feedback" role="status">{notice}</p>}
+        {availabilityLoading ? <p className="empty-state" role="status">Loading your availability...</p> : <>
+          <div className="subs-availability-grid">
+            {[
+              { key: 'general', label: 'General sub', detail: 'Fill in for a team as a player.', checked: isAvailableToSub, onChange: handleAvailabilityChange },
+              { key: 'goalies', label: 'Goalie sub', detail: 'Help a team that needs a goalie.', checked: isAvailableToGoalieSub, onChange: handleGoalieAvailabilityChange },
+            ].map((option) => <label key={option.key} className={`subs-availability-option${option.checked ? ' is-available' : ''}`}>
+              <input type="checkbox" checked={option.checked} disabled={!currentProfileId || updatingAvailability}
+                onChange={(event) => option.onChange(event.target.checked)} />
+              <span className="subs-availability-copy">
+                <strong>{option.label}</strong>
+                <span>{option.detail}</span>
+                <span className="subs-availability-state">{option.checked ? 'Available' : 'Not available'}</span>
+              </span>
+            </label>)}
+          </div>
+          {!currentProfileId && !availabilityError && <p className="page-subtitle">Your signed-in account is not linked to a player profile.</p>}
+        </>}
+        {updatingAvailability && <p role="status">Saving availability...</p>}
       </section>
 
-      <section className="content-card">
-        <div className="subs-filter-row">
-            <label className='form-field subs-team-filter'>
-                <span>Filter by team</span>
-
-                <select
-                    value={selectedTeamFilter}
-                    onChange={(event) =>
-                    setSelectedTeamFilter(event.target.value)
-                    }
-                >
-                    <option value="all">All teams</option>
-
-                    {allTeams.map((team) => (
-                        <option key={team.id} value={team.id}>
-                            {team.name}
-                        </option>
-                    ))}
-                </select>
-            </label>
+      <section className="content-card" aria-labelledby="subs-directory-heading">
+        <header className="content-card-header">
+          <h2 id="subs-directory-heading">Find a sub</h2>
+          <span className="content-card-meta" role="status">{loading ? 'Loading...' : listError ? 'Unavailable' : `${filteredSubs.length} ${filteredSubs.length === 1 ? 'player' : 'players'} found`}</span>
+        </header>
+        <div className="subs-category-options" role="group" aria-label="Sub category">
+          {[{ key: 'general', label: 'General subs', count: generalSubs.length }, { key: 'goalies', label: 'Goalies', count: goalieSubs.length }].map((category) =>
+            <button type="button" key={category.key} aria-pressed={activeSubTab === category.key}
+              className={`action-btn ${activeSubTab === category.key ? 'action-btn--primary' : 'action-btn--secondary'}`}
+              onClick={() => setActiveSubTab(category.key)}>
+              {category.label}{!loading && !listError && <span className="subs-category-count">{category.count}</span>}
+            </button>
+          )}
         </div>
-    </section>
-
-      {loading ? (
-        <section className="content-card">
-          <p>Loading available subs...</p>
-        </section>
-      ) : filteredSubs.length === 0 ? (
-        <section className="content-card">
-          <p>
-            {selectedTeamFilter === 'all'
-                ? 'No players are currently available to sub.'
-                : 'No players are currently available for this team.'}
-          </p>
-        </section>
-      ) : (
-        <section className="content-card">
-          <div className="table-scroll">
-            <table className="subs-table">
-              <thead>
-                <tr>
-                  <th>Player</th>
-                  <th>Position</th>
-                  <th>Regular Team</th>
-                  <th>Phone</th>
-                  <th>Teams Available For</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {filteredSubs.map((sub) => (
-                  <tr key={sub.profileId}>
-                    <td>{sub.fullName}</td>
-                    <td>{sub.position}</td>
-                    <td>{sub.regularTeam}</td>
-
-                    <td>
-                      {sub.phone ? (
-                        <a href={`tel:${sub.phone}`}>
-                          {sub.phone}
-                        </a>
-                      ) : (
-                        'Not provided'
-                      )}
-                    </td>
-
-                    <td>
-                      <div className="sub-team-list">
-                        {sub.selectedTeams.map((team) => (
-                          <span
-                            className="sub-team-badge"
-                            key={team.id}
-                          >
-                            {team.name}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="subs-directory-filters">
+          <div className="form-field">
+            <label htmlFor="subs-search">Find a player</label>
+            <input id="subs-search" type="search" placeholder="Search by name" value={search} onChange={(event) => setSearch(event.target.value)} />
           </div>
-        </section>
-      )}
+          <div className="form-field">
+            <label htmlFor="subs-team">Available for team</label>
+            <select id="subs-team" value={selectedTeamFilter} onChange={(event) => setSelectedTeamFilter(event.target.value)}>
+              <option value="all">All teams</option>
+              {allTeams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+            </select>
+          </div>
+          {hasFilters && <button type="button" className="action-btn action-btn--outline" onClick={clearFilters}>Clear filters</button>}
+        </div>
+        {teamsError && <p className="admin-save-error" role="alert">{teamsError}</p>}
+        {loading ? <p className="subs-empty" role="status">Loading available subs...</p>
+          : listError ? <div className="subs-empty"><p role="alert">{listError}</p><button type="button" className="action-btn action-btn--outline" onClick={() => { setLoading(true); loadAvailableSubs() }}>Try again</button></div>
+          : filteredSubs.length === 0 ? <div className="subs-empty">
+            <strong>{hasFilters ? 'No matching subs' : activeSubTab === 'goalies' ? 'No goalies available right now' : 'No subs available right now'}</strong>
+            <p>{hasFilters ? 'Try another name or team, or clear your filters.' : 'Check back later as players update their availability.'}</p>
+            {hasFilters && <button type="button" className="action-btn action-btn--outline" onClick={clearFilters}>Show all {activeSubTab === 'goalies' ? 'goalies' : 'general subs'}</button>}
+          </div>
+          : <div className="subs-player-grid">
+            {filteredSubs.map((sub) => <article className="subs-player-card" key={sub.profileId}>
+              <header className="subs-player-heading">
+                <div className="subs-avatar" aria-hidden="true">{(sub.fullName ?? '?').trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('')}</div>
+                <div><h3>{sub.fullName || 'Unnamed player'}</h3><span className="subs-available-badge">Available{activeSubTab === 'goalies' ? ' as goalie' : ''}</span></div>
+              </header>
+              <dl className="subs-player-details">
+                <div><dt>Roster position</dt><dd>{sub.position}</dd></div>
+                <div><dt>Regular team</dt><dd>{sub.regularTeam}</dd></div>
+              </dl>
+              <div className="subs-player-teams">
+                <h4>Available for</h4>
+                <div className="sub-team-list">{sub.selectedTeams.map((team) => <span className="sub-team-badge" key={team.id}>{team.name}</span>)}</div>
+              </div>
+              <footer className="subs-contact">
+                {sub.phone ? <>
+                  <span className="subs-phone">{sub.phone}</span>
+                  <div className="subs-contact-actions">
+                    <a className="action-btn action-btn--primary" href={`tel:${sub.phone}`} aria-label={`Call ${sub.fullName}`}>Call</a>
+                    <a className="action-btn action-btn--outline" href={`sms:${sub.phone}`} aria-label={`Text ${sub.fullName}`}>Text</a>
+                  </div>
+                </> : <span className="subs-phone">No phone number provided</span>}
+              </footer>
+            </article>)}
+          </div>}
+      </section>
     </div>
   )
 }
