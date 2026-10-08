@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { filterUpcomingGamesForTeam, filterGamesForTeam, formatDateKey, gameEndTime } from './scheduleHelpers.js';
+import { filterUpcomingGamesForTeam, filterGamesForTeam, formatDateKey, formatGameDate, gameEndTime } from './scheduleHelpers.js';
 
 const game = (id, date, time = '19:00:00', team = 'red') => ({
     id, game_date: date, start_time: time, home_team_id: team, away_team_id: 'blue',
@@ -40,4 +40,12 @@ test('games end exactly an hour after their start, including midnight', () => {
     for (const invalid of [null, '', 'TBD', '24:00', '12:60', '12:30:60']) {
         assert.equal(gameEndTime(invalid), null);
     }
+});
+
+
+test('game labels show the stored year across December and January', () => {
+    assert.equal(formatGameDate('2026-12-31', { includeYear: true }), 'Thu, Dec 31, 2026');
+    assert.equal(formatGameDate('2027-01-01', { includeYear: true }), 'Fri, Jan 1, 2027');
+    assert.equal(formatGameDate('2027-01-01'), 'Fri, Jan 1');
+    assert.equal(formatGameDate(null, { includeYear: true }), 'TBD');
 });

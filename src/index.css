@@ -4961,3 +4961,95 @@ button {
   outline: 2px solid var(--blue-600);
   outline-offset: 2px;
 }
+
+
+/* Compact desktop banner; mobile retains its existing layout. */
+@media (min-width: 769px) {
+  .next-game-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 5px 10px;
+    border-radius: var(--radius-sm);
+    background: #d8ecf8;
+    color: var(--navy-900);
+    pointer-events: auto;
+    user-select: auto;
+  }
+  .next-game-banner-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    min-height: 31.2px;
+  }
+  .next-game-banner-matchup {
+    display: block;
+    flex: 0 1 auto;
+    min-width: 0;
+    font-size: var(--text-sm);
+    line-height: 18px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .next-game-banner-details {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex: 0 1 auto;
+    min-width: 0;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 13.2px;
+    color: var(--steel-700);
+    white-space: nowrap;
+  }
+  .next-game-banner-details > span { flex-shrink: 0; }
+  .next-game-banner-details > span:last-child {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .next-game-banner-controls { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 55%; }
+  .next-game-banner-picker { display: flex; width: clamp(160px, 24vw, 380px); min-width: 0; }
+  .next-game-banner-picker select {
+    width: 100%;
+    min-width: 0;
+    height: 30px;
+    padding: 4px 6px;
+    border: 1px solid #9dbed5;
+    border-radius: var(--radius-sm);
+    background: var(--white);
+    color: var(--navy-900);
+    font: inherit;
+    font-size: var(--text-sm);
+    text-overflow: ellipsis;
+  }
+  .next-game-banner-navigation { display: flex; gap: 4px; flex-shrink: 0; }
+  .next-game-banner-navigation button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid #9dbed5;
+    border-radius: var(--radius-sm);
+    background: var(--white);
+    color: var(--blue-600);
+    cursor: pointer;
+  }
+  .next-game-banner-navigation button:hover:not(:disabled) { background: var(--ice-100); border-color: var(--blue-600); }
+  .next-game-banner-navigation button:disabled,
+  .next-game-banner-picker select:disabled { opacity: 0.5; cursor: default; }
+  .next-game-banner button:focus-visible,
+  .next-game-banner select:focus-visible { outline: 2px solid var(--blue-600); outline-offset: 2px; }
+}
+
+@media (min-width: 769px) and (max-width: 1200px) {
+  .next-game-banner-summary { flex-direction: column; align-items: stretch; gap: 0; }
+  .next-game-banner-matchup, .next-game-banner-details { flex: auto; }
+}

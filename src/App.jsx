@@ -5,6 +5,7 @@ import { loadAuthenticatedProfile } from "./lib/authHelpers.js";
 import { downloadScheduleIcs } from "./utils/calendarExport.js";
 import { IconCheck, IconX, IconChevronDown, IconChevronRight } from "@tabler/icons-react";
 import HockeyIcon from "./components/HockeyIcon.jsx";
+import NextGameBanner from "./components/NextGameBanner.jsx";
 import {
     FEED_TYPE_LABELS,
     resolveRsvp,
@@ -1969,47 +1970,12 @@ function App() {
                         </span>
                     </div>
                 </div>
-                {gameContext && (
-                    <div className="app-bar-ribbon" aria-label="Next game status">
-                        <span className="ribbon-meta-label">Next Game</span>
-                        <span className="ribbon-vdivider" aria-hidden="true" />
-
-                        <button
-                            type="button"
-                            className="next-game-arrow"
-                            onClick={() => {
-                                setNextGameIndex((index) =>
-                                    index === 0 ? 0 : index - 1
-                                );
-                            }}
-                            disabled={upcomingGames.length <= 1 || nextGameIndex === 0}
-                        >
-                            ‹
-                        </button>
-                        <span className="ribbon-matchup">{gameContext.matchup}</span>
-
-                        {[gameContext.date, gameContext.time, gameContext.rink].map((item) => (
-                            <span key={item} className="ribbon-meta-group">
-                                <span className="ribbon-vdivider" aria-hidden="true" />
-                                <span className="ribbon-meta">{item}</span>
-                            </span>
-                         ))}
-
-                         <button
-                            type="button"
-                            className="next-game-arrow"
-                            onClick={() => {
-                                setNextGameIndex((index) =>
-                                    index === upcomingGames.length - 1 ? 0 : index + 1
-                                )
-                            }}
-                            disabled={upcomingGames.length <= 1}
-                        >
-                            ›
-                        </button>
-
-                    </div>
-                )}
+                <NextGameBanner
+                    games={upcomingGames}
+                    selectedIndex={nextGameIndex}
+                    gameContext={gameContext}
+                    onSelect={setNextGameIndex}
+                />
 
                 <button
                             type="button"

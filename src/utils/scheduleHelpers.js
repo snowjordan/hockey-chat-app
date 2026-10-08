@@ -93,7 +93,7 @@ export function formatDateKey(date) {
     return `${year}-${month}-${day}`;
 }
 
-export function formatGameDate(dateString) {
+export function formatGameDate(dateString, { includeYear = false } = {}) {
     if (!dateString) {
         return "TBD";
     }
@@ -133,6 +133,7 @@ export function formatGameDate(dateString) {
             weekday: "short",
             month: "short",
             day: "numeric",
+            ...(includeYear ? { year: "numeric" } : {}),
         }
     );
 }
