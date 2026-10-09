@@ -39,6 +39,7 @@ import SetPassword from './components/SetPassword';
 import AdminScheduleView from './components/admin/AdminScheduleView';
 import AdminProfilesView from './components/admin/AdminProfilesView';
 import AdminNoticeView from './components/admin/AdminNoticeView';
+import AdminEmailView from './components/admin/AdminEmailView';
 import { manageableTeams } from "./utils/rsvpManagement.js";
 import RsvpManagement from "./components/RsvpManagement.jsx";
 import SavedTab from './components/SavedTab';
@@ -1893,6 +1894,10 @@ function App() {
                 return <RsvpManagement access={access} active={activeView === "manage-rsvps"}
                     onSaved={() => setRsvpRevision((value) => value + 1)} />;
 
+            case "admin-email":
+                if (!isAdmin) return null;
+                return <AdminEmailView userId={session.user.id} active={activeView === "admin-email"} />;
+
             case "admin-schedule":
                 if (!isAdmin) return null;
                 return <AdminScheduleView />;
@@ -2040,6 +2045,13 @@ function App() {
                             >
                                 Notice
                             </button>
+                            <button
+                                type="button"
+                                className={`sidebar-link${activeView === "admin-email" ? " is-active" : ""}`}
+                                onClick={() => navigateTo("admin-email")}
+                            >
+                                Email Members
+                            </button>
                         </>
                     )}
                     {canManageRsvps && (
@@ -2062,7 +2074,7 @@ function App() {
                     {[
                         ...NAV_ITEMS.map((item) => item.id),
                         ...(canManageRsvps ? ["manage-rsvps"] : []),
-                        ...(isAdmin ? ["admin-schedule", "admin-profiles", "admin-notice"] : []),
+                        ...(isAdmin ? ["admin-schedule", "admin-profiles", "admin-notice", "admin-email"] : []),
                     ].map((view) => (
                         <SavedTab key={view} active={activeView === view}>
                             {() => renderView(view)}

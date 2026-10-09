@@ -1,0 +1,5 @@
+# Both handlers validate credentials themselves: user JWT / private worker secret.
+[functions.send-admin-email]
+verify_jwt = false
+[functions.process-admin-email]
+verify_jwt = false

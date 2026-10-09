@@ -76,3 +76,10 @@ forged game/team/player IDs, invalid statuses, revoked captains, team transfers,
 resetting to No response, and direct writes to `team_captains` being denied.
 Verify updated counts and the player's own RSVP after returning to Dashboard
 and Schedule, and check the management page on mobile.
+
+### Admin email queue
+
+Admin email delivery uses a durable queue with shared pacing, retries, idempotent
+submission, and a per-admin cooldown. See [deployment instructions](supabase/ADMIN_EMAIL_SETUP.md)
+for the migration, updated functions, worker secret, and scheduler. These server
+changes must be deployed before queue protections are active.

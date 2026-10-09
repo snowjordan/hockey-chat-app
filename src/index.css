@@ -5138,3 +5138,26 @@ button {
   .chat-composer { padding: 10px; }
   .chat-composer .action-btn { flex-shrink: 0; min-height: 44px; }
 }
+
+.admin-email-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.admin-email-card { min-width: 0; }
+.admin-email-card > h3 { margin: 0 0 16px; color: var(--navy-900); }
+.admin-email-panel { min-width: 0; margin: 0; padding: 0; border: 0; display: grid; gap: 16px; }
+
+.admin-email-panel .form-field { margin: 0; }
+.admin-email-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-email-recipients { display: grid; gap: 16px; }
+.admin-email-person { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; overflow-wrap: anywhere; }
+.admin-email-person input { flex-shrink: 0; margin-top: 4px; }
+.admin-email-person small { display: block; }
+.admin-email-review { max-height: 240px; overflow-y: auto; overflow-wrap: anywhere; padding-left: 20px; }
+.admin-email-review li { margin: 8px 0; }
+@media (max-width: 900px) { .admin-email-layout { grid-template-columns: minmax(0, 1fr); } }
+.admin-email-history { margin-top: 20px; overflow-wrap: anywhere; }
+.admin-email-history details { padding: 12px 0; }
+.admin-email-history summary { cursor: pointer; }
+.admin-email-team { min-width: 0; border: 1px solid var(--ice-200); border-radius: var(--radius-md); overflow: hidden; }
+.admin-email-team-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; padding: 10px 12px; background: var(--ice-100); border-bottom: 1px solid var(--ice-200); }
+.admin-email-team-heading h3 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+.admin-email-team-heading span { font-size: var(--text-xs); color: var(--steel-500); }
+.admin-email-team > .admin-email-person { padding-left: 12px; padding-right: 12px; }

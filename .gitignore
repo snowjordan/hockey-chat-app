@@ -29,3 +29,4 @@ dist-ssr
 
 #update for asdf controlled node version.
 .tool-versions
+supabase/.temp/
